@@ -1,0 +1,13 @@
+# Ignorar carpetas de compilación
+bin/
+obj/
+.vs/
+*.user
+
+# Ignorar ejecutables y archivos temporales
+*.exe
+*.dll
+*.pdb
+nextdns.exe
+escudo_dns.ico
+FINAL/
