@@ -4,7 +4,7 @@
 
 Este proyecto es una interfaz gráfica (GUI) construida en **WPF** y **.NET 10** que facilita la instalación, configuración y gestión del CLI oficial de NextDNS. Olvídate de usar la consola de comandos; gestiona tus perfiles y el estado del servicio con una interfaz elegante y funcional.
 
-![Captura de Pantalla](https://imgur.com/a/nextdns-manager-kHJcTWl)
+![Captura de Pantalla](https://i.imgur.com/0DArnUB.png)
 *(Sube una captura de tu aplicación a la carpeta del repo y pon el nombre aquí, o arrastra la imagen al editor de GitHub)*
 
 ## ✨ Características Principales
