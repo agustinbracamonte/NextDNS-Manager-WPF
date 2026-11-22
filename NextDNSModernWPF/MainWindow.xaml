@@ -23,9 +23,9 @@
         <SolidColorBrush x:Key="NextBlue" Color="#2F80ED"/>
         <SolidColorBrush x:Key="NextRed" Color="#D32F2F"/>
         <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="TextSecondary" Color="#B0B0B0"/>
-        <SolidColorBrush x:Key="BorderColor" Color="#3A3F46"/>
-        <SolidColorBrush x:Key="FocusBorderColor" Color="#72AEFF"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#A0A0A0"/>
+        <SolidColorBrush x:Key="BorderColor" Color="#333333"/>
+        <SolidColorBrush x:Key="FocusBorderColor" Color="#2F80ED"/>
 
         <Style x:Key="WindowBtnStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
@@ -143,7 +143,7 @@
                 </Trigger>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                    <Setter TargetName="Border" Property="BorderThickness" Value="2"/>
+                    <Setter TargetName="Border" Property="BorderThickness" Value="1"/>
                 </Trigger>
                 <Trigger Property="IsDropDownOpen" Value="True">
                     <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
@@ -169,8 +169,8 @@
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BorderBrush" Value="#4B91EE"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -179,14 +179,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#4A92F5"/>
+                                <Setter TargetName="border" Property="Opacity" Value="0.85"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#1F62B7"/>
+                                <Setter TargetName="border" Property="Opacity" Value="0.72"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                                <Setter TargetName="border" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="border" Property="Opacity" Value="0.5"/>
@@ -200,8 +200,8 @@
         <Style x:Key="UpdateBtnStyle" TargetType="Button">
             <Setter Property="Background" Value="#202C3A"/>
             <Setter Property="Foreground" Value="#B9D8FF"/>
-            <Setter Property="BorderBrush" Value="#466A93"/>
-            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -214,14 +214,13 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="updateBorder" Property="Background" Value="#293C52"/>
-                                <Setter TargetName="updateBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="updateBorder" Property="Background" Value="#314F70"/>
+                                <Setter TargetName="updateBorder" Property="Background" Value="#26384D"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="updateBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                                <Setter TargetName="updateBorder" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="updateBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="updateBorder" Property="Opacity" Value="0.55"/>
@@ -247,18 +246,14 @@
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Setter TargetName="checkMark" Property="Visibility" Value="Visible"/>
-                                <Setter TargetName="checkMark" Property="Stroke" Value="White"/>
-                                <Setter TargetName="border" Property="Background" Value="{StaticResource NextBlue}"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#245FAE"/>
+                                <Setter TargetName="border" Property="Background" Value="Transparent"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
                                 <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                                <Setter TargetName="border" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -267,7 +262,7 @@
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#282C31"/>
+            <Setter Property="Background" Value="#2C2C2C"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
             <Setter Property="BorderThickness" Value="1"/>
@@ -277,9 +272,9 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
-                        <Border x:Name="InputBorder" CornerRadius="6" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                        <Border x:Name="InputBorder" CornerRadius="5" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" Padding="2">
                             <Grid>
-                                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}" VerticalAlignment="Center"/>
+                                <ScrollViewer x:Name="PART_ContentHost" Margin="0" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="Watermark" Text="{TemplateBinding Tag}" VerticalAlignment="Center" Margin="11,0,0,0"
                                            Foreground="#B8C0CA" IsHitTestVisible="False" Visibility="Collapsed"/>
                             </Grid>
@@ -289,11 +284,12 @@
                                 <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="#66707D"/>
+                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="#555555"/>
+                                <Setter TargetName="InputBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                 <Setter TargetName="InputBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                                <Setter TargetName="InputBorder" Property="BorderThickness" Value="2"/>
+                                <Setter TargetName="InputBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="InputBorder" Property="Opacity" Value="0.6"/>
@@ -319,7 +315,7 @@
                             <Border Grid.Row="0" BorderThickness="0" Padding="5,0,0,5">
                                 <ContentPresenter ContentSource="Header" RecognizesAccessKey="True" />
                             </Border>
-                            <Border Grid.Row="1" Background="{StaticResource CardColor}" BorderThickness="1" BorderBrush="{TemplateBinding BorderBrush}" CornerRadius="7" Padding="5">
+                            <Border Grid.Row="1" BorderThickness="1" BorderBrush="{TemplateBinding BorderBrush}" CornerRadius="5" Padding="5">
                                 <ContentPresenter />
                             </Border>
                         </Grid>
@@ -338,7 +334,7 @@
 
                     <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,18" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
 
-                    <Border Background="{StaticResource CardColor}" BorderBrush="{StaticResource BorderColor}" BorderThickness="1" CornerRadius="13" Padding="18" Margin="0,0,0,20">
+                    <Border Background="{StaticResource CardColor}" CornerRadius="15" Padding="20" Margin="0,0,0,20">
                         <StackPanel>
                             <TextBlock x:Name="lblStatus" Text="DESCONOCIDO" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
                             <TextBlock x:Name="lblInfo" Text="Verificando servicio..." FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0" TextWrapping="Wrap"/>
@@ -347,7 +343,7 @@
 
                     <TextBlock Text="PERFIL A UTILIZAR" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Margin="5,0,0,5"/>
 
-                    <Border CornerRadius="10" Background="{StaticResource CardColor}" BorderBrush="{StaticResource BorderColor}" BorderThickness="1" Height="45" Margin="0,0,0,16">
+                    <Border CornerRadius="10" Background="{StaticResource CardColor}" Height="45" Margin="0,0,0,16">
                         <ComboBox x:Name="cmbProfiles" BorderThickness="0" Background="Transparent" Foreground="White" VerticalContentAlignment="Center" Padding="10,0" FontSize="14">
                             <ComboBox.Resources>
                                 <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1E1E1E" />
@@ -378,19 +374,19 @@
                                 <Button Grid.Column="4" Content="Guardar" Width="80" Height="38" Click="BtnAdd_Click">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border x:Name="bdr" CornerRadius="5" Background="{StaticResource NextBlue}" BorderBrush="#4B91EE" BorderThickness="1">
+                                            <Border x:Name="bdr" CornerRadius="5" Background="{StaticResource NextBlue}" BorderBrush="Transparent" BorderThickness="0">
                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="White" TextElement.FontWeight="Bold"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="bdr" Property="Background" Value="#4A92F5"/>
+                                                    <Setter TargetName="bdr" Property="Opacity" Value="0.85"/>
                                                 </Trigger>
                                                 <Trigger Property="IsPressed" Value="True">
-                                                    <Setter TargetName="bdr" Property="Background" Value="#1F62B7"/>
+                                                    <Setter TargetName="bdr" Property="Opacity" Value="0.72"/>
                                                 </Trigger>
                                                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                                                     <Setter TargetName="bdr" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                                                    <Setter TargetName="bdr" Property="BorderThickness" Value="2"/>
+                                                    <Setter TargetName="bdr" Property="BorderThickness" Value="1"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
@@ -401,21 +397,21 @@
                             <Button Content="Eliminar seleccionado" Height="30" Background="Transparent" Foreground="{StaticResource NextRed}" Click="BtnDel_Click" Cursor="Hand">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="deleteBorder" Background="Transparent" BorderBrush="Transparent" BorderThickness="1" CornerRadius="4">
-                            <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+                                        <Border x:Name="deleteBorder" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" CornerRadius="4">
+                                            <TextBlock Text="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
                                         </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="deleteBorder" Property="Background" Value="#241B1D"/>
-                                <Setter Property="Foreground" Value="#FF6B73"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="deleteBorder" Property="Background" Value="#3A2023"/>
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="deleteBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Foreground" Value="#F0626D"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="deleteBorder" Property="Opacity" Value="0.75"/>
+                                            </Trigger>
+                                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                                <Setter TargetName="deleteBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                                <Setter TargetName="deleteBorder" Property="BorderThickness" Value="1"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
                                     </ControlTemplate>
                                 </Button.Template>
                             </Button>
