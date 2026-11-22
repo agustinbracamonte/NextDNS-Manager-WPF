@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -30,57 +31,163 @@ namespace NextDNSModernWPF
         private static readonly Version MinimumSupportedCliVersion = new Version(1, 50, 2);
         private const string ExpectedCliSha256 = "5A603C759BC4A854A6AAE46CADB91AE00A95BA5BB0591B985F49A95597856B8E";
         private System.Windows.Forms.NotifyIcon _notifyIcon;
+        private System.Windows.Forms.ContextMenuStrip _trayContextMenu;
+        private System.Drawing.Icon _trayIcon;
+        private bool _allowClose;
+        private bool _trayDisposed;
 
         public MainWindow()
         {
             InitializeComponent();
+            PreviewKeyDown += MainWindow_PreviewKeyDown;
 
-            // Configurar ruta del JSON
-            if (!Directory.Exists(appDataFolder)) Directory.CreateDirectory(appDataFolder);
-            profilesFile = Path.Combine(appDataFolder, "profiles.json");
+            try
+            {
+                // Configurar ruta del JSON
+                if (!Directory.Exists(appDataFolder)) Directory.CreateDirectory(appDataFolder);
+                profilesFile = Path.Combine(appDataFolder, "profiles.json");
 
-            try { this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/escudo_dns.ico")); } catch { }
-            InitializeTrayIcon();
+                try { this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/escudo_dns.ico")); } catch { }
+                InitializeTrayIcon();
 
-            if (!IsRunningAsAdmin()) { /* Warning silencioso */ }
+                if (!IsRunningAsAdmin()) { /* Warning silencioso */ }
 
-            LoadProfiles();
-            Task.Run(() => CheckCurrentStatus());
+                LoadProfiles();
+                Task.Run(() => CheckCurrentStatus());
+            }
+            catch
+            {
+                DisposeTrayIcon();
+                throw;
+            }
         }
 
         private void InitializeTrayIcon()
         {
-            _notifyIcon = new System.Windows.Forms.NotifyIcon();
+            System.Windows.Forms.NotifyIcon notifyIcon = null;
+            System.Windows.Forms.ContextMenuStrip contextMenu = null;
+            System.Drawing.Icon trayIcon = null;
             try
             {
-                using (Stream iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/escudo_dns.ico")).Stream)
+                notifyIcon = new System.Windows.Forms.NotifyIcon();
+                contextMenu = new System.Windows.Forms.ContextMenuStrip();
+
+                try
                 {
-                    _notifyIcon.Icon = new System.Drawing.Icon(iconStream);
+                    using (Stream iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/escudo_dns.ico")).Stream)
+                    using (var sourceIcon = new System.Drawing.Icon(iconStream))
+                        trayIcon = (System.Drawing.Icon)sourceIcon.Clone();
                 }
+                catch { trayIcon = (System.Drawing.Icon)System.Drawing.SystemIcons.Shield.Clone(); }
+
+                notifyIcon.Icon = trayIcon;
+                notifyIcon.Text = "NextDNS Manager";
+                notifyIcon.DoubleClick += NotifyIcon_DoubleClick;
+
+                contextMenu.Items.Add("Abrir", null, (s, e) => RestoreFromTray());
+                contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+                contextMenu.Items.Add("Salir (Ctrl+Q)", null, (s, e) => ExitApplication());
+                notifyIcon.ContextMenuStrip = contextMenu;
+                notifyIcon.Visible = true;
+
+                _notifyIcon = notifyIcon;
+                _trayContextMenu = contextMenu;
+                _trayIcon = trayIcon;
             }
-            catch { _notifyIcon.Icon = System.Drawing.SystemIcons.Shield; }
-
-            _notifyIcon.Visible = true;
-            _notifyIcon.Text = "NextDNS Manager";
-            _notifyIcon.DoubleClick += (s, args) => { this.Show(); this.WindowState = WindowState.Normal; this.Activate(); };
-
-            var contextMenu = new System.Windows.Forms.ContextMenuStrip();
-            contextMenu.Items.Add("Abrir", null, (s, e) => { this.Show(); this.WindowState = WindowState.Normal; this.Activate(); });
-            contextMenu.Items.Add("-");
-            contextMenu.Items.Add("Salir (Quit)", null, (s, e) => { ExitApplication(); });
-            _notifyIcon.ContextMenuStrip = contextMenu;
+            catch
+            {
+                try { if (notifyIcon != null) notifyIcon.Visible = false; } catch { }
+                try { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; } catch { }
+                try { notifyIcon?.Dispose(); } catch { }
+                try { contextMenu?.Dispose(); } catch { }
+                try { trayIcon?.Dispose(); } catch { }
+                throw;
+            }
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            e.Cancel = true;
-            this.Hide();
+            bool applicationShuttingDown = System.Windows.Application.Current?.Dispatcher.HasShutdownStarted == true;
+            if (!_allowClose && !applicationShuttingDown)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+
+            base.OnClosing(e);
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            DisposeTrayIcon();
+            base.OnClosed(e);
+        }
+
+        internal void RestoreFromTray()
+        {
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(RestoreFromTray));
+                return;
+            }
+
+            Show();
+            if (WindowState == WindowState.Minimized)
+                WindowState = WindowState.Normal;
+            Activate();
+        }
+
+        internal void AllowCloseForSessionEnding()
+        {
+            _allowClose = true;
+        }
+
+        private void NotifyIcon_DoubleClick(object sender, EventArgs e)
+        {
+            RestoreFromTray();
+        }
+
+        private void MainWindow_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == Key.Q && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+            {
+                e.Handled = true;
+                ExitApplication();
+            }
         }
 
         private void ExitApplication()
         {
-            _notifyIcon.Dispose();
-            System.Windows.Application.Current.Shutdown();
+            if (!Dispatcher.CheckAccess())
+            {
+                Dispatcher.BeginInvoke(new Action(ExitApplication));
+                return;
+            }
+
+            _allowClose = true;
+            Close();
+        }
+
+        private void DisposeTrayIcon()
+        {
+            if (_trayDisposed)
+                return;
+
+            _trayDisposed = true;
+            System.Windows.Forms.NotifyIcon notifyIcon = _notifyIcon;
+            System.Windows.Forms.ContextMenuStrip contextMenu = _trayContextMenu;
+            System.Drawing.Icon trayIcon = _trayIcon;
+            _notifyIcon = null;
+            _trayContextMenu = null;
+            _trayIcon = null;
+
+            try { if (notifyIcon != null) notifyIcon.Visible = false; } catch { }
+            try { if (notifyIcon != null) notifyIcon.DoubleClick -= NotifyIcon_DoubleClick; } catch { }
+            try { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; } catch { }
+            try { notifyIcon?.Dispose(); } catch { }
+            try { contextMenu?.Dispose(); } catch { }
+            try { trayIcon?.Dispose(); } catch { }
         }
 
         private async void BtnAction_Click(object sender, RoutedEventArgs e)
