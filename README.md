@@ -17,9 +17,9 @@ Este proyecto es una interfaz gráfica (GUI) construida en **WPF** y **.NET 10**
 
 ## 📥 Descarga e Instalación
 
-Puedes descargar la última versión desde la sección de **[Releases](https://github.com/TU_USUARIO/NextDNS-Manager-WPF/releases)**.
+Puedes descargar la última versión desde la sección de **[Releases](https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases)**.
 
-1.  Descarga el archivo `Instalador_NextDNS_Manager.exe`.
+1.  Descarga el instalador `NextDNS-Manager-<versión>-Setup-x64.exe` de la última versión.
 2.  Ejecútalo y sigue los pasos de instalación.
 3.  Abre la aplicación, introduce tu **ID de Perfil** de NextDNS y dale a **ACTIVAR**.
 
@@ -58,14 +58,26 @@ Instala .NET 10 SDK e Inno Setup 7 y ejecuta:
 powershell -File .\scripts\Build-Installer.ps1
 ```
 
-El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.1.2-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Al desinstalar, pide confirmación antes de quitar el servicio CLI `nextdns` si está registrado. El instalador no sustituye el cliente GUI oficial de Windows.
+El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.3.0-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
 
 La versión 1.1.2 evita instancias e iconos duplicados y bloquea la instalación o desinstalación mientras el Manager siga abierto. La X oculta la ventana; usa **Salir** desde la bandeja para cerrar el programa antes de reparar o actualizar. El instalador verifica todos los archivos copiados mediante SHA-256. Puedes repetir esa comprobación con `powershell -File .\scripts\Test-InstallLayout.ps1 -Directory 'C:\Program Files\NextDNS Manager'`. El diagnóstico del error de arranque está en [docs/ARRANQUE_Y_BANDEJA.md](docs/ARRANQUE_Y_BANDEJA.md).
 
 ## ⚠️ Requisitos
 
 * Windows 10 o Windows 11 (64 bits).
-* Permisos de Administrador (necesarios para configurar los adaptadores de red y servicios).
+* Permisos de Administrador para instalar, actualizar o desinstalar. La interfaz normal permite activar y desactivar sin elevación desde la versión 1.2.0.
+
+El [servicio auxiliar de control](docs/PERMISOS_Y_SERVICIO.md) limita el acceso al usuario de la sesión que instaló el Manager y conserva el DNS anterior al desactivar. El CLI permanece instalado entre activaciones. Cerrar la interfaz conserva el estado de protección elegido.
+
+El Manager se registra una vez para iniciar en la bandeja al comenzar la sesión de Windows. Se puede desactivar desde la sección Aplicaciones de inicio del Administrador de tareas. La protección DNS funciona mediante los servicios de Windows aunque la ventana esté cerrada, y el servicio comprueba su estado al reanudar desde suspensión o hibernación.
+
+## Actualizaciones
+
+El Manager consulta automáticamente la última versión estable de GitHub al iniciarse y cada 24 horas mientras permanece abierto en la bandeja. Al detectar un instalador más reciente muestra un aviso y un acceso en la ventana. También puedes elegir **Buscar actualizaciones** en el menú del icono de la bandeja. Una falla de red no bloquea el inicio ni la protección.
+
+El aviso abre la página oficial de Releases, donde puedes descargar el instalador y ejecutarlo. Windows pedirá permisos de administrador para actualizar el servicio. Cierra el Manager desde la bandeja antes de instalar. La búsqueda automática no descarga ni ejecuta archivos por su cuenta. El instalador actualmente no está firmado digitalmente y Windows puede mostrar una advertencia.
+
+Para publicar una versión, actualiza las versiones de los proyectos, `Build-Installer.ps1` y `NextDNSManager.iss`; integra los cambios en `main` y sube una etiqueta estable `vX.Y.Z` que coincida con esas versiones. El workflow `release.yml` compila el instalador para Windows, verifica el CLI, genera `SHA256SUMS.txt` y crea la Release con ambos archivos. El hash detecta errores de descarga; una firma digital de código requeriría un certificado de publicación.
 
 ## 📄 Créditos
 

@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$appVersion = '1.1.2'
+$appVersion = '1.3.0'
 $expectedCliSha256 = '5a603c759bc4a854a6aae46cadb91ae00a95ba5bb0591b985f49a95597856b8e'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'NextDNSModernWPF\NextDNSModernWPF.csproj'
@@ -70,6 +70,10 @@ $publishArguments = @(
 & $DotNetPath @publishArguments
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish terminó con código $LASTEXITCODE." }
 
+$serviceProject = Join-Path $projectRoot 'NextDNSManager.Service\NextDNSManager.Service.csproj'
+& $DotNetPath publish $serviceProject -c Release -r win-x64 --self-contained true '-p:PublishTrimmed=false' '-p:PublishSingleFile=false' -o (Join-Path $publishDirectory 'service')
+if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar el servicio auxiliar: $LASTEXITCODE." }
+
 $managerExe = Join-Path $publishDirectory 'NextDNSModernWPF.exe'
 $publishedCli = Join-Path $publishDirectory 'nextdns.exe'
 foreach ($requiredFile in @($managerExe, $publishedCli)) {
@@ -77,6 +81,7 @@ foreach ($requiredFile in @($managerExe, $publishedCli)) {
 }
 $publishedHash = (Get-FileHash -LiteralPath $publishedCli -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($publishedHash -ne $expectedCliSha256) { throw "El CLI publicado no está verificado: $publishedHash" }
+Copy-Item -LiteralPath (Join-Path $projectRoot 'NextDNSModernWPF\escudo_dns.ico') -Destination (Join-Path $publishDirectory 'NextDNSManager.ico') -Force
 
 $layoutManifest = Get-ChildItem -LiteralPath $publishDirectory -File -Recurse | Sort-Object FullName | ForEach-Object {
     $relativePath = $_.FullName.Substring($publishDirectory.Length + 1)

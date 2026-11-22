@@ -1,0 +1,67 @@
+name: Publicar instalador de Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Etiqueta existente (vX.Y.Z) que se desea publicar
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validar etiqueta y versión
+        shell: pwsh
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          $tag = if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') { $env:INPUT_TAG } else { $env:GITHUB_REF_NAME }
+          if ($tag -cnotmatch '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$') { throw 'La etiqueta debe ser vX.Y.Z estable.' }
+          $version = $tag.Substring(1)
+          [xml]$project = Get-Content -Raw NextDNSModernWPF/NextDNSModernWPF.csproj
+          if ($project.Project.PropertyGroup.Version -ne $version) { throw 'La etiqueta no coincide con la versión del proyecto.' }
+          if ((Get-Content -Raw scripts/Build-Installer.ps1) -notmatch [regex]::Escape("`$appVersion = '$version'")) { throw 'La versión del script de compilación no coincide.' }
+          "RELEASE_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Instalar Inno Setup verificado
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest -Uri 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $installer
+          if ((Get-FileHash -LiteralPath $installer -Algorithm SHA256).Hash -ne '8A5A6711C3766A6E5FB74F280BA0E3551E719CE94538D901FDBD1F8F9920B3F0') { throw 'El hash de Inno Setup no coincide.' }
+          $signature = Get-AuthenticodeSignature -FilePath $installer
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Pyrsys B.V.*') { throw 'La firma de Inno Setup no es válida.' }
+          $process = Start-Process -FilePath $installer -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/ALLUSERS' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup terminó con código $($process.ExitCode)." }
+      - name: Compilar y verificar instalador
+        shell: pwsh
+        run: |
+          $compiler = Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe'
+          & ./scripts/Build-Installer.ps1 -DotNetPath (Get-Command dotnet).Source -IsccPath $compiler
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el instalador.' }
+          $setup = "artifacts/NextDNS-Manager-$env:RELEASE_VERSION-Setup-x64.exe"
+          $hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $(Split-Path -Leaf $setup)" | Set-Content -Encoding ascii -Path artifacts/SHA256SUMS.txt
+      - name: Publicar versión y archivos
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $setup = "artifacts/NextDNS-Manager-$env:RELEASE_VERSION-Setup-x64.exe"
+          gh release create $env:RELEASE_TAG $setup artifacts/SHA256SUMS.txt --verify-tag --title "NextDNS Manager $env:RELEASE_VERSION" --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo publicar la versión en GitHub.' }

@@ -36,7 +36,7 @@ namespace NextDNSModernWPF
 
         internal bool IsPrimary => _isPrimary;
 
-        internal static SingleInstanceCoordinator Start(Dispatcher dispatcher, Action restoreMainWindow)
+        internal static SingleInstanceCoordinator Start(Dispatcher dispatcher, Action restoreMainWindow, bool restoreExisting = true)
         {
             EventWaitHandle? restoreEvent = null;
             Mutex? mutex = null;
@@ -52,6 +52,7 @@ namespace NextDNSModernWPF
                 }
                 catch (UnauthorizedAccessException ex)
                 {
+                    if (!restoreExisting) return new SingleInstanceCoordinator(false);
                     // An existing mutex can be inaccessible across different
                     // elevation/account tokens. Never launch another window in
                     // that case; wait briefly for and signal the primary's event.
@@ -69,6 +70,8 @@ namespace NextDNSModernWPF
                 {
                     mutex.Dispose();
                     mutex = null;
+
+                    if (!restoreExisting) return new SingleInstanceCoordinator(false);
 
                     if (TrySignalExistingInstance())
                     {
