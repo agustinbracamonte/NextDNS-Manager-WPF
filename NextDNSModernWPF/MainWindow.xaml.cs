@@ -4,9 +4,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using Microsoft.Win32;
-using System.Security.Cryptography;
-using System.Security.Principal;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -14,6 +11,8 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
+using NextDNSManager.Shared;
 
 namespace NextDNSModernWPF
 {
@@ -28,8 +27,15 @@ namespace NextDNSModernWPF
         private string profilesFile;
 
         private bool isProtected = false;
-        private static readonly Version MinimumSupportedCliVersion = new Version(1, 50, 2);
-        private const string ExpectedCliSha256 = "5A603C759BC4A854A6AAE46CADB91AE00A95BA5BB0591B985F49A95597856B8E";
+        private bool hasBrokerStatus;
+        private bool needsDnsRestore;
+        private string activeProfileId;
+        private string brokerStatusError;
+        private readonly BrokerClient brokerClient = new BrokerClient();
+        private readonly UpdateChecker updateChecker = new UpdateChecker();
+        private DispatcherTimer updateTimer;
+        private bool updateCheckInProgress;
+        private UpdateInfo availableUpdate;
         private System.Windows.Forms.NotifyIcon _notifyIcon;
         private System.Windows.Forms.ContextMenuStrip _trayContextMenu;
         private System.Drawing.Icon _trayIcon;
@@ -50,10 +56,13 @@ namespace NextDNSModernWPF
                 try { this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/escudo_dns.ico")); } catch { }
                 InitializeTrayIcon();
 
-                if (!IsRunningAsAdmin()) { /* Warning silencioso */ }
-
                 LoadProfiles();
-                Task.Run(() => CheckCurrentStatus());
+                btnAction.IsEnabled = false;
+                _ = CheckCurrentStatusAsync(enableActionWhenComplete: true);
+                updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(24) };
+                updateTimer.Tick += UpdateTimer_Tick;
+                updateTimer.Start();
+                _ = CheckForUpdatesAsync(false);
             }
             catch
             {
@@ -75,7 +84,7 @@ namespace NextDNSModernWPF
                 try
                 {
                     using (Stream iconStream = System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/escudo_dns.ico")).Stream)
-                    using (var sourceIcon = new System.Drawing.Icon(iconStream))
+                    using (var sourceIcon = new System.Drawing.Icon(iconStream, 32, 32))
                         trayIcon = (System.Drawing.Icon)sourceIcon.Clone();
                 }
                 catch { trayIcon = (System.Drawing.Icon)System.Drawing.SystemIcons.Shield.Clone(); }
@@ -83,8 +92,10 @@ namespace NextDNSModernWPF
                 notifyIcon.Icon = trayIcon;
                 notifyIcon.Text = "NextDNS Manager";
                 notifyIcon.DoubleClick += NotifyIcon_DoubleClick;
+                notifyIcon.BalloonTipClicked += NotifyIcon_BalloonTipClicked;
 
                 contextMenu.Items.Add("Abrir", null, (s, e) => RestoreFromTray());
+                contextMenu.Items.Add("Buscar actualizaciones", null, async (s, e) => await CheckForUpdatesAsync(true));
                 contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
                 contextMenu.Items.Add("Salir (Ctrl+Q)", null, (s, e) => ExitApplication());
                 notifyIcon.ContextMenuStrip = contextMenu;
@@ -120,6 +131,7 @@ namespace NextDNSModernWPF
 
         protected override void OnClosed(EventArgs e)
         {
+            if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
             DisposeTrayIcon();
             base.OnClosed(e);
         }
@@ -184,296 +196,232 @@ namespace NextDNSModernWPF
 
             try { if (notifyIcon != null) notifyIcon.Visible = false; } catch { }
             try { if (notifyIcon != null) notifyIcon.DoubleClick -= NotifyIcon_DoubleClick; } catch { }
+            try { if (notifyIcon != null) notifyIcon.BalloonTipClicked -= NotifyIcon_BalloonTipClicked; } catch { }
             try { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; } catch { }
             try { notifyIcon?.Dispose(); } catch { }
             try { contextMenu?.Dispose(); } catch { }
             try { trayIcon?.Dispose(); } catch { }
         }
 
-        private async void BtnAction_Click(object sender, RoutedEventArgs e)
+        private async void UpdateTimer_Tick(object sender, EventArgs e) => await CheckForUpdatesAsync(false);
+
+        private async Task CheckForUpdatesAsync(bool manual)
         {
-            if (!IsRunningAsAdmin())
-            {
-                System.Windows.MessageBox.Show(
-                    "Ejecuta NextDNS Manager como administrador para modificar el servicio.",
-                    "Permisos requeridos", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            btnAction.IsEnabled = false;
-
-            if (isProtected)
-            {
-                string errorMsg = await Task.Run(() =>
-                {
-                    string uninstallResult = RunSilentCommand("uninstall");
-                    if (uninstallResult != "OK") return "No se pudo desinstalar el servicio NextDNS:\n" + uninstallResult;
-
-                    CliCommandResult status = RunCliCommand("status");
-                    string statusText = string.Join(Environment.NewLine,
-                        new[] { status.StandardOutput, status.StandardError }
-                            .Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
-                    if (status.ExitCode != 0 || !string.Equals(statusText, "not installed", StringComparison.OrdinalIgnoreCase))
-                        return "El comando terminó, pero no se pudo confirmar que el servicio haya quedado desinstalado. Estado: " + statusText;
-
-                    return "OK";
-                });
-
-                if (errorMsg == "OK") isProtected = false;
-                else
-                {
-                    System.Windows.MessageBox.Show(errorMsg, "Fallo", MessageBoxButton.OK, MessageBoxImage.Error);
-                    isProtected = await Task.Run(() => IsCliServiceRunning());
-                }
-            }
-            else
-            {
-                if (cmbProfiles.SelectedItem == null) { System.Windows.MessageBox.Show("Selecciona un perfil"); btnAction.IsEnabled = true; return; }
-                string profileName = cmbProfiles.SelectedItem.ToString();
-                string profileId = profiles.FirstOrDefault(p => p.Name == profileName)?.ID;
-                if (string.IsNullOrEmpty(profileId)) { btnAction.IsEnabled = true; return; }
-                bool reportInfo = chkReportName.IsChecked == true;
-                bool setupRouter = chkSetupRouter.IsChecked == true;
-
-                string errorMsg = await Task.Run(() => {
-                    // CORRECCIÓN 2: Verificar antes si existe el exe auxiliar
-                    string exePath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nextdns.exe");
-                    if (!File.Exists(exePath)) return "Falta el archivo 'nextdns.exe' en la carpeta del programa.\nPor favor instálelo correctamente.";
-
-                    if (HasWindowsService("NextDNSService"))
-                        return "Se detectó instalado el cliente oficial de NextDNS para Windows (servicio NextDNSService). No se puede activar este CLI en paralelo porque ambos pueden competir por DNS. Desinstala primero el otro cliente desde Windows o usa exclusivamente el cliente oficial.";
-
-                    string cliVersionError = ValidateCliVersion();
-                    if (!string.IsNullOrWhiteSpace(cliVersionError)) return cliVersionError;
-
-                    string args = $"install -config {profileId} -auto-activate";
-                    if (reportInfo) args += " -report-client-info";
-                    if (setupRouter) args += " -setup-router";
-
-                    string errInstall = RunSilentCommand(args);
-                    if (errInstall != "OK") return "Error al instalar:\n" + errInstall;
-
-                    CliCommandResult status = RunCliCommand("status");
-                    string statusText = string.Join(Environment.NewLine,
-                        new[] { status.StandardOutput, status.StandardError }
-                            .Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
-                    if (status.ExitCode != 0 || !string.Equals(statusText, "running", StringComparison.OrdinalIgnoreCase))
-                        return "El instalador terminó, pero el servicio no confirmó estado activo. Estado: " + statusText;
-
-                    string serviceBinaryError = ValidateInstalledServiceBinary();
-                    if (!string.IsNullOrWhiteSpace(serviceBinaryError)) return serviceBinaryError;
-
-                    return "OK";
-                });
-
-                if (errorMsg == "OK") isProtected = true;
-                else
-                {
-                    System.Windows.MessageBox.Show(errorMsg, "Fallo", MessageBoxButton.OK, MessageBoxImage.Error);
-                    isProtected = await Task.Run(() => IsCliServiceRunning());
-                }
-            }
-            UpdateUI();
-            btnAction.IsEnabled = true;
-        }
-
-        private sealed class CliCommandResult
-        {
-            public int ExitCode { get; }
-            public string StandardOutput { get; }
-            public string StandardError { get; }
-
-            public CliCommandResult(int exitCode, string standardOutput, string standardError)
-            {
-                ExitCode = exitCode;
-                StandardOutput = standardOutput;
-                StandardError = standardError;
-            }
-        }
-
-        private CliCommandResult RunCliCommand(string arguments)
-        {
-            string exePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "nextdns.exe");
-            if (!File.Exists(exePath)) throw new FileNotFoundException("Falta el archivo nextdns.exe.", exePath);
-
-            ProcessStartInfo psi = new ProcessStartInfo
-            {
-                FileName = exePath,
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true
-            };
-
-            using (Process process = Process.Start(psi))
-            {
-                if (process == null) throw new InvalidOperationException("No se pudo iniciar nextdns.exe.");
-                Task<string> stdoutTask = process.StandardOutput.ReadToEndAsync();
-                Task<string> stderrTask = process.StandardError.ReadToEndAsync();
-                process.WaitForExit();
-                Task.WaitAll(stdoutTask, stderrTask);
-                return new CliCommandResult(process.ExitCode, stdoutTask.Result, stderrTask.Result);
-            }
-        }
-
-        private string ValidateCliVersion()
-        {
+            if (updateCheckInProgress) return;
+            updateCheckInProgress = true;
             try
             {
-                CliCommandResult result = RunCliCommand("version");
-                string output = string.Join(Environment.NewLine,
-                    new[] { result.StandardOutput, result.StandardError }
-                        .Where(value => !string.IsNullOrWhiteSpace(value)));
-
-                if (result.ExitCode != 0)
-                    return "No se pudo verificar la versión del núcleo NextDNS." + Environment.NewLine + output;
-
-                Match match = Regex.Match(output, @"(?m)^\s*nextdns version (?<version>\d+\.\d+\.\d+)\s*$", RegexOptions.IgnoreCase);
-                if (!match.Success || !Version.TryParse(match.Groups["version"].Value, out Version installedVersion))
-                    return "No se pudo leer la versión del núcleo NextDNS. Actualiza nextdns.exe a v1.50.2 o posterior.";
-
-                if (installedVersion.CompareTo(MinimumSupportedCliVersion) < 0)
+                UpdateInfo update = await updateChecker.CheckAsync();
+                if (_trayDisposed) return;
+                if (update == null)
                 {
-                    return $"El núcleo NextDNS {installedVersion} está desactualizado. Se requiere v{MinimumSupportedCliVersion} o posterior, que incluye la corrección del bucle de CPU. Actualiza nextdns.exe desde https://github.com/nextdns/nextdns/releases/latest.";
+                    if (manual) System.Windows.MessageBox.Show("No hay una versión más reciente publicada.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
                 }
-
-                return null;
+                availableUpdate = update;
+                btnUpdate.Content = $"Disponible la versión {update.Version}";
+                btnUpdate.Visibility = Visibility.Visible;
+                string marker = Path.Combine(appDataFolder, "last-update-notified.txt");
+                bool notified = false;
+                try { notified = File.Exists(marker) && File.ReadAllText(marker).Trim() == update.Version; } catch (IOException) { }
+                if (manual || !notified)
+                {
+                    _notifyIcon.BalloonTipTitle = "Actualización disponible";
+                    _notifyIcon.BalloonTipText = $"NextDNS Manager {update.Version} ya está disponible. Haz clic para abrir GitHub.";
+                    _notifyIcon.ShowBalloonTip(8000);
+                    try { File.WriteAllText(marker, update.Version); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                }
+                if (manual)
+                    System.Windows.MessageBox.Show($"La versión {update.Version} está disponible. Selecciona el aviso en la ventana para abrir las descargas.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                return "No se pudo verificar la versión del núcleo NextDNS: " + ex.Message;
+                if (manual && !_trayDisposed)
+                    System.Windows.MessageBox.Show("No se pudo buscar actualizaciones. Comprueba tu conexión e inténtalo de nuevo.\n" + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
+            finally { updateCheckInProgress = false; }
         }
 
-        private string RunSilentCommand(string arguments)
+        private void BtnUpdate_Click(object sender, RoutedEventArgs e) => OpenReleases();
+        private void NotifyIcon_BalloonTipClicked(object sender, EventArgs e) { if (availableUpdate != null) OpenReleases(); }
+
+        private void OpenReleases()
         {
             try
             {
-                CliCommandResult result = RunCliCommand(arguments);
-                if (result.ExitCode == 0) return "OK";
-
-                string output = string.Join(Environment.NewLine,
-                    new[] { result.StandardError, result.StandardOutput }
-                        .Where(value => !string.IsNullOrWhiteSpace(value)));
-                return string.IsNullOrWhiteSpace(output) ? $"Error: {result.ExitCode}" : output.Trim();
+                Process.Start(new ProcessStartInfo("https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases") { UseShellExecute = true });
             }
-            catch (Exception ex) { return ex.Message; }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show("No se pudo abrir la página de versiones. " + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void BtnAction_Click(object sender, RoutedEventArgs e)
+        {
+            btnAction.IsEnabled = false;
+            try
+            {
+                string operation = isProtected || needsDnsRestore ? "deactivate" : "activate";
+                string profileId = null;
+
+                if (operation == "activate")
+                {
+                    if (cmbProfiles.SelectedItem == null)
+                    {
+                        System.Windows.MessageBox.Show("Selecciona un perfil.", "Perfil requerido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    string profileName = cmbProfiles.SelectedItem.ToString();
+                    profileId = profiles.FirstOrDefault(p => string.Equals(p.Name, profileName, StringComparison.Ordinal))?.ID;
+                    if (string.IsNullOrWhiteSpace(profileId))
+                    {
+                        System.Windows.MessageBox.Show("El perfil seleccionado no tiene un ID válido.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    if (!Regex.IsMatch(profileId, @"\A[0-9a-fA-F]{6}\z", RegexOptions.CultureInvariant))
+                    {
+                        System.Windows.MessageBox.Show("El ID del perfil debe tener exactamente 6 caracteres hexadecimales.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+                }
+
+                brokerStatusError = null;
+                BrokerResponse response = await brokerClient.SendAsync(new BrokerRequest
+                {
+                    Version = BrokerProtocol.Version,
+                    Operation = operation,
+                    ProfileId = profileId,
+                    ReportClientInfo = operation == "activate" && chkReportName.IsChecked == true,
+                    SetupRouter = operation == "activate" && chkSetupRouter.IsChecked == true
+                });
+
+                if (response.Success)
+                {
+                    ApplyBrokerStatus(response);
+                }
+                else
+                {
+                    brokerStatusError = string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo completar la operación." : response.Error;
+                    System.Windows.MessageBox.Show(
+                        brokerStatusError,
+                        "Fallo",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    await CheckCurrentStatusAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                brokerStatusError = ex.Message;
+                System.Windows.MessageBox.Show(ex.Message, "Broker no disponible", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                btnAction.IsEnabled = true;
+                UpdateUI();
+            }
+        }
+
+        internal async Task CheckCurrentStatusAsync(bool enableActionWhenComplete = false)
+        {
+            try
+            {
+                BrokerResponse response = await brokerClient.SendAsync(new BrokerRequest
+                {
+                    Version = BrokerProtocol.Version,
+                    Operation = "status"
+                });
+
+                if (response.Success)
+                {
+                    ApplyBrokerStatus(response);
+                }
+                else
+                {
+                    brokerStatusError = string.IsNullOrWhiteSpace(response.Error) ? "No se pudo consultar el estado del broker." : response.Error;
+                }
+            }
+            catch (Exception ex)
+            {
+                // A failed status request is not evidence that protection is off.
+                // Preserve the last confirmed state; on first launch keep status unknown.
+                brokerStatusError = ex.Message;
+            }
+            UpdateUI();
+            if (enableActionWhenComplete)
+                btnAction.IsEnabled = true;
+        }
+
+        private void ApplyBrokerStatus(BrokerResponse response)
+        {
+            isProtected = response.Active;
+            needsDnsRestore = response.State == "attention";
+            if (response.Active)
+            {
+                chkReportName.IsChecked = response.ReportClientInfo;
+                chkSetupRouter.IsChecked = response.SetupRouter;
+            }
+            activeProfileId = response.ProfileId;
+            hasBrokerStatus = true;
+            brokerStatusError = null;
+            UpdateUI();
         }
 
         private void UpdateUI()
         {
-            Dispatcher.Invoke(() =>
+            if (needsDnsRestore)
             {
-                if (isProtected)
-                {
-                    lblStatus.Text = "PROTEGIDO";
-                    lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#40A745"));
-                    lblInfo.Text = $"Perfil activo: {cmbProfiles.SelectedItem}";
-                    btnAction.Content = "DESACTIVAR";
-                    btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1E1E1E"));
-                    btnAction.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D32F2F"));
-                }
-                else
-                {
-                    lblStatus.Text = "DESPROTEGIDO";
-                    lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#A0A0A0"));
-                    lblInfo.Text = "El tráfico no está encriptado";
-                    btnAction.Content = "ACTIVAR";
-                    btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2F80ED"));
-                    btnAction.Foreground = System.Windows.Media.Brushes.White;
-                }
-            });
-        }
-
-        private void CheckCurrentStatus()
-        {
-            isProtected = IsCliServiceRunning();
-            UpdateUI();
-        }
-
-        private bool IsCliServiceRunning()
-        {
-            try
-            {
-                CliCommandResult status = RunCliCommand("status");
-                string statusText = string.Join(Environment.NewLine,
-                    new[] { status.StandardOutput, status.StandardError }
-                        .Where(value => !string.IsNullOrWhiteSpace(value))).Trim();
-                return status.ExitCode == 0 && string.Equals(statusText, "running", StringComparison.OrdinalIgnoreCase);
+                lblStatus.Text = "REQUIERE ATENCIÓN";
+                lblStatus.Foreground = new SolidColorBrush(System.Windows.Media.Colors.Orange);
+                lblInfo.Text = "Hay una configuración DNS pendiente de restaurar.";
+                btnAction.Content = "RESTABLECER DNS";
+                return;
             }
-            catch
+            if (!hasBrokerStatus)
             {
-                return false;
+                lblStatus.Text = "ESTADO DESCONOCIDO";
+                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#A0A0A0"));
+                lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError) ? "Verificando servicio..." : brokerStatusError;
+                btnAction.Content = "ACTIVAR";
+                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2F80ED"));
+                btnAction.Foreground = System.Windows.Media.Brushes.White;
+                return;
             }
-        }
 
-        private static bool HasWindowsService(string serviceName)
-        {
-            using (RegistryKey serviceKey = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}", writable: false))
+            if (isProtected)
             {
-                return serviceKey != null;
+                lblStatus.Text = "PROTEGIDO";
+                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#40A745"));
+                string profileLabel = string.IsNullOrWhiteSpace(activeProfileId)
+                    ? "Perfil activo: no informado"
+                    : $"Perfil activo: {GetProfileDisplayName(activeProfileId)}";
+                lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError)
+                    ? profileLabel
+                    : profileLabel + Environment.NewLine + brokerStatusError;
+                btnAction.Content = "DESACTIVAR";
+                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1E1E1E"));
+                btnAction.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D32F2F"));
+            }
+            else
+            {
+                lblStatus.Text = "DESPROTEGIDO";
+                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#A0A0A0"));
+                lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError)
+                    ? "NextDNS Manager no está activo"
+                    : "NextDNS Manager no está activo" + Environment.NewLine + brokerStatusError;
+                btnAction.Content = "ACTIVAR";
+                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2F80ED"));
+                btnAction.Foreground = System.Windows.Media.Brushes.White;
             }
         }
 
-        private static string GetWindowsServiceImagePath(string serviceName)
+        private string GetProfileDisplayName(string profileId)
         {
-            using (RegistryKey serviceKey = Registry.LocalMachine.OpenSubKey($@"SYSTEM\CurrentControlSet\Services\{serviceName}", writable: false))
-            {
-                return serviceKey?.GetValue("ImagePath") as string;
-            }
-        }
-
-        private string ValidateInstalledServiceBinary()
-        {
-            string imagePath = GetWindowsServiceImagePath("nextdns");
-            Match imageMatch = Regex.Match(imagePath ?? string.Empty, @"^\s*""(?<path>[^""]+\.exe)""(?:\s|$)", RegexOptions.IgnoreCase);
-            if (!imageMatch.Success)
-                return "No se pudo verificar la ruta del ejecutable registrado en el servicio nextdns.";
-
-            string expectedPath = Path.GetFullPath(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "nextdns", "nextdns.exe"));
-            string installedPath;
-            try
-            {
-                installedPath = Path.GetFullPath(imageMatch.Groups["path"].Value);
-            }
-            catch (Exception ex)
-            {
-                return "La ruta registrada para el servicio nextdns no es válida: " + ex.Message;
-            }
-
-            if (!string.Equals(installedPath, expectedPath, StringComparison.OrdinalIgnoreCase))
-                return "El servicio nextdns apunta a una ruta inesperada. No se confirmó qué núcleo está ejecutando: " + installedPath;
-
-            if (!File.Exists(installedPath))
-                return "No se encontró el ejecutable configurado para el servicio nextdns: " + installedPath;
-
-            try
-            {
-                using (FileStream stream = File.OpenRead(installedPath))
-                {
-                    string installedHash = Convert.ToHexString(SHA256.HashData(stream));
-                    if (!string.Equals(installedHash, ExpectedCliSha256, StringComparison.OrdinalIgnoreCase))
-                        return "El servicio nextdns quedó instalado con un ejecutable distinto de la versión oficial verificada v1.50.2.";
-                }
-            }
-            catch (Exception ex)
-            {
-                return "No se pudo validar el ejecutable activo del servicio nextdns: " + ex.Message;
-            }
-
-            return null;
-        }
-
-        private bool IsRunningAsAdmin()
-        {
-            using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
-            {
-                WindowsPrincipal principal = new WindowsPrincipal(identity);
-                return principal.IsInRole(WindowsBuiltInRole.Administrator);
-            }
+            return profiles.FirstOrDefault(profile =>
+                string.Equals(profile.ID, profileId, StringComparison.OrdinalIgnoreCase))?.Name ?? profileId;
         }
 
         private void BtnAdd_Click(object sender, RoutedEventArgs e)

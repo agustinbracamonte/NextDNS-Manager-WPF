@@ -23,7 +23,9 @@ foreach ($line in [System.IO.File]::ReadAllLines($manifestPath)) {
 }
 
 foreach ($requiredFile in @('NextDNSModernWPF.exe', 'NextDNSModernWPF.dll', 'NextDNSModernWPF.runtimeconfig.json',
-    'NextDNSModernWPF.deps.json', 'System.Diagnostics.Tracing.dll', 'coreclr.dll', 'nextdns.exe')) {
+    'NextDNSModernWPF.deps.json', 'System.Diagnostics.Tracing.dll', 'coreclr.dll', 'nextdns.exe',
+    'NextDNSManager.ico', 'service\NextDNSManager.Service.exe', 'service\NextDNSManager.Service.dll',
+    'service\NextDNSManager.Service.runtimeconfig.json', 'service\NextDNSManager.Service.deps.json')) {
     if (-not $verifiedFiles.ContainsKey($requiredFile)) { throw "El manifiesto no contiene $requiredFile" }
 }
 Write-Output "Instalación completa: $($verifiedFiles.Count) archivos verificados en $resolvedDirectory"
