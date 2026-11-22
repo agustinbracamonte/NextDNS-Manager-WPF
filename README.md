@@ -58,7 +58,7 @@ Instala .NET 10 SDK e Inno Setup 7 y ejecuta:
 powershell -File .\scripts\Build-Installer.ps1
 ```
 
-El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.1.0-Setup-x64.exe`. El asistente usa tema oscuro azul, ilustración propia y el escudo del manager; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Al desinstalar, también quita el servicio CLI `nextdns` si está registrado. El instalador no sustituye el cliente GUI oficial de Windows.
+El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.1.1-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Al desinstalar, pide confirmación antes de quitar el servicio CLI `nextdns` si está registrado. El instalador no sustituye el cliente GUI oficial de Windows.
 
 ## ⚠️ Requisitos
 
