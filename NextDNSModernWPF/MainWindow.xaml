@@ -252,7 +252,8 @@
                         </ComboBox>
                     </Border>
 
-                    <CheckBox x:Name="chkReportName" Content="Reportar nombre de dispositivo" Style="{StaticResource ModernCheck}" IsChecked="True" Margin="5,0,0,30"/>
+                    <CheckBox x:Name="chkReportName" Content="Reportar nombre de dispositivo" Style="{StaticResource ModernCheck}" IsChecked="True" Margin="5,0,0,10"/>
+                    <CheckBox x:Name="chkSetupRouter" Content="Permitir consultas de otros equipos (modo router)" ToolTip="Activa NextDNS para solicitudes de otros dispositivos de la red." Style="{StaticResource ModernCheck}" IsChecked="False" Margin="5,0,0,30"/>
 
                     <Button x:Name="btnAction" Content="ACTIVAR" Height="55" Style="{StaticResource RoundedBtn}" Click="BtnAction_Click"/>
 
