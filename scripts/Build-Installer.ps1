@@ -4,13 +4,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$appVersion = '1.1.1'
+$appVersion = '1.1.2'
 $expectedCliSha256 = '5a603c759bc4a854a6aae46cadb91ae00a95ba5bb0591b985f49a95597856b8e'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'NextDNSModernWPF\NextDNSModernWPF.csproj'
 $installerScript = Join-Path $projectRoot 'installer\NextDNSManager.iss'
 $artifactDirectory = Join-Path $projectRoot 'artifacts'
-$publishDirectory = Join-Path $projectRoot 'artifacts\publish-1.1.1-win-x64'
+$publishDirectory = Join-Path $projectRoot "artifacts\publish-$appVersion-win-x64"
 $installerName = "NextDNS-Manager-$appVersion-Setup-x64.exe"
 $installerPath = Join-Path $artifactDirectory $installerName
 
@@ -64,7 +64,7 @@ New-Item -ItemType Directory -Path $publishDirectory -Force | Out-Null
 $assemblyVersion = "$appVersion.0"
 $publishArguments = @(
     'publish', $projectFile, '-c', 'Release', '-r', 'win-x64', '--self-contained', 'true',
-    '-p:PublishSingleFile=false', "-p:Version=$appVersion", "-p:AssemblyVersion=$assemblyVersion",
+    '-p:PublishSingleFile=false', '-p:PublishTrimmed=false', "-p:Version=$appVersion", "-p:AssemblyVersion=$assemblyVersion",
     "-p:FileVersion=$assemblyVersion", '-o', $publishDirectory
 )
 & $DotNetPath @publishArguments
@@ -77,6 +77,13 @@ foreach ($requiredFile in @($managerExe, $publishedCli)) {
 }
 $publishedHash = (Get-FileHash -LiteralPath $publishedCli -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($publishedHash -ne $expectedCliSha256) { throw "El CLI publicado no está verificado: $publishedHash" }
+
+$layoutManifest = Get-ChildItem -LiteralPath $publishDirectory -File -Recurse | Sort-Object FullName | ForEach-Object {
+    $relativePath = $_.FullName.Substring($publishDirectory.Length + 1)
+    (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() + '  ' + $relativePath
+}
+[System.IO.File]::WriteAllLines((Join-Path $publishDirectory 'install-files.sha256'), [string[]]$layoutManifest)
+& (Join-Path $PSScriptRoot 'Test-InstallLayout.ps1') -Directory $publishDirectory
 
 New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
 $stagingDirectory = Join-Path $artifactDirectory ".installer-staging-$([Guid]::NewGuid().ToString('N'))"
