@@ -1,13 +1,22 @@
+using System.Text.Json;
+
 namespace NextDNSManager.Service;
 
 internal interface IProfileSwitchActions
 {
+    Task BeginAsync(CancellationToken cancellationToken);
     Task DisableDnsAsync(CancellationToken cancellationToken);
     Task SetTargetConfigurationAsync(CancellationToken cancellationToken);
-    Task RestartServiceAsync(CancellationToken cancellationToken);
+    Task RestartTargetServiceAsync(CancellationToken cancellationToken);
     Task VerifyTargetResolverAsync(CancellationToken cancellationToken);
-    Task EnableDnsAsync(CancellationToken cancellationToken);
-    Task RestorePreviousAsync(CancellationToken cancellationToken);
+    Task EnableTargetDnsAsync(CancellationToken cancellationToken);
+    Task CommitAsync(CancellationToken cancellationToken);
+    Task DisableDnsForRollbackAsync(CancellationToken cancellationToken);
+    Task SetPreviousConfigurationAsync(CancellationToken cancellationToken);
+    Task RestartPreviousServiceAsync(CancellationToken cancellationToken);
+    Task VerifyPreviousResolverAsync(CancellationToken cancellationToken);
+    Task EnablePreviousDnsAsync(CancellationToken cancellationToken);
+    Task CompleteRollbackAsync(CancellationToken cancellationToken);
     void MarkRecoveryRequired();
 }
 
@@ -16,13 +25,48 @@ internal sealed class ProfileSwitchTransactionException : InvalidOperationExcept
     internal ProfileSwitchTransactionException(bool previousProfileRestored, Exception innerException)
         : base(previousProfileRestored
             ? "No se pudo aplicar el perfil solicitado. Se restauró el perfil anterior."
-            : "No se pudo aplicar el perfil solicitado ni restaurar el perfil anterior. La protección puede estar desactivada; consulta el estado antes de volver a intentarlo.",
+            : "No se pudo aplicar el perfil solicitado ni restaurar el perfil anterior. La protección requiere recuperación; conserva el perfil anterior y reinténtalo cuando vuelva la conexión.",
             innerException)
     {
         PreviousProfileRestored = previousProfileRestored;
     }
 
     internal bool PreviousProfileRestored { get; }
+}
+
+/// <summary>
+/// Durable record written before DNS is changed. Its presence means startup
+/// recovery must restore the prior configuration before accepting new work.
+/// </summary>
+internal sealed record ProfileSwitchJournal(int Version, string PreviousConfiguration, string TargetConfiguration)
+{
+    internal const int CurrentVersion = 1;
+
+    internal static ProfileSwitchJournal Create(string previousConfiguration, string targetConfiguration) =>
+        new(CurrentVersion, previousConfiguration, targetConfiguration);
+
+    internal string Serialize() => JsonSerializer.Serialize(this);
+
+    internal static bool TryDeserialize(string? json, out ProfileSwitchJournal? journal)
+    {
+        journal = null;
+        if (string.IsNullOrWhiteSpace(json)) return false;
+
+        try
+        {
+            ProfileSwitchJournal? candidate = JsonSerializer.Deserialize<ProfileSwitchJournal>(json);
+            if (candidate is null || candidate.Version != CurrentVersion ||
+                string.IsNullOrWhiteSpace(candidate.PreviousConfiguration) ||
+                string.IsNullOrWhiteSpace(candidate.TargetConfiguration))
+                return false;
+            journal = candidate;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 }
 
 internal static class ProfileSwitchTransaction
@@ -41,20 +85,24 @@ internal static class ProfileSwitchTransaction
         if (rollbackTimeout <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(rollbackTimeout));
 
+        // This durable write must finish before DNS or the CLI is mutated.
+        await actions.BeginAsync(cancellationToken).ConfigureAwait(false);
+
         try
         {
             await actions.DisableDnsAsync(cancellationToken).ConfigureAwait(false);
             await actions.SetTargetConfigurationAsync(cancellationToken).ConfigureAwait(false);
-            await actions.RestartServiceAsync(cancellationToken).ConfigureAwait(false);
+            await actions.RestartTargetServiceAsync(cancellationToken).ConfigureAwait(false);
             await actions.VerifyTargetResolverAsync(cancellationToken).ConfigureAwait(false);
-            await actions.EnableDnsAsync(cancellationToken).ConfigureAwait(false);
+            await actions.EnableTargetDnsAsync(cancellationToken).ConfigureAwait(false);
+            await actions.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (Exception applyError) when (applyError is not OutOfMemoryException)
         {
             using var rollbackDeadline = new CancellationTokenSource(rollbackTimeout);
             try
             {
-                await actions.RestorePreviousAsync(rollbackDeadline.Token).ConfigureAwait(false);
+                await RestorePreviousAsync(actions, rollbackDeadline.Token).ConfigureAwait(false);
             }
             catch (Exception rollbackError) when (rollbackError is not OutOfMemoryException)
             {
@@ -73,5 +121,15 @@ internal static class ProfileSwitchTransaction
 
             throw new ProfileSwitchTransactionException(previousProfileRestored: true, applyError);
         }
+    }
+
+    internal static async Task RestorePreviousAsync(IProfileSwitchActions actions, CancellationToken cancellationToken)
+    {
+        await actions.DisableDnsForRollbackAsync(cancellationToken).ConfigureAwait(false);
+        await actions.SetPreviousConfigurationAsync(cancellationToken).ConfigureAwait(false);
+        await actions.RestartPreviousServiceAsync(cancellationToken).ConfigureAwait(false);
+        await actions.VerifyPreviousResolverAsync(cancellationToken).ConfigureAwait(false);
+        await actions.EnablePreviousDnsAsync(cancellationToken).ConfigureAwait(false);
+        await actions.CompleteRollbackAsync(cancellationToken).ConfigureAwait(false);
     }
 }

@@ -8,6 +8,7 @@ namespace NextDNSManager.Service;
 
 internal sealed class NextDnsEngine
 {
+    private const string ProfileSwitchJournalValueName = "ProfileSwitchJournal";
     private readonly SemaphoreSlim _operations = new(1, 1);
     private readonly DnsConfiguration _dns = new();
     private static string InstalledCli => @"C:\Program Files\nextdns\nextdns.exe";
@@ -19,6 +20,9 @@ internal sealed class NextDnsEngine
         await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
         try
         {
+            if (request.Operation != "status" && HasProfileSwitchJournal())
+                await RecoverPendingProfileSwitchAsync(deadline.Token).ConfigureAwait(false);
+
             if (request.Operation == "activate") await EnableAsync(request, deadline.Token).ConfigureAwait(false);
             else if (request.Operation == "deactivate")
             {
@@ -76,7 +80,8 @@ internal sealed class NextDnsEngine
                 previousConfiguration!,
                 previousProfile,
                 previousReport,
-                previousRouter);
+                previousRouter,
+                ProfileSwitchJournal.Create(previousConfiguration!, signature));
             await ProfileSwitchTransaction.ExecuteAsync(actions, token).ConfigureAwait(false);
             return;
         }
@@ -133,50 +138,11 @@ internal sealed class NextDnsEngine
         }
     }
 
-    private async Task RestorePreviousConfigurationAsync(
-        string signature,
-        string profile,
-        bool reportClientInfo,
-        bool setupRouter,
-        CancellationToken token)
-    {
-        SetWanted(false);
-        if (_dns.HasSnapshot)
-            await _dns.DisableAsync(token).ConfigureAwait(false);
-
-        if (!ServiceExists("nextdns") || !BrokerPolicy.OwnsCli)
-            throw new InvalidOperationException("No se encontró el servicio NextDNS anterior para restaurar el perfil.");
-
-        ValidateOwnedCli();
-        await RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(profile, reportClientInfo, setupRouter)), token).ConfigureAwait(false);
-        if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, token).ConfigureAwait(false);
-        else await RunCliAsync(new[] { "start" }, token).ConfigureAwait(false);
-
-        await WaitForCliRunningAsync(token).ConfigureAwait(false);
-        ValidateOwnedCli();
-        await VerifyResolverAsync(token).ConfigureAwait(false);
-
-        BrokerPolicy.SavedProfile = profile;
-        WriteSetting("Configuration", signature);
-        await _dns.EnableAsync(token).ConfigureAwait(false);
-        SetWanted(true);
-
-        BrokerResponse restored = Status();
-        if (!restored.Active || !string.Equals(restored.ProfileId, profile, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Windows no confirmó la restauración del perfil anterior.");
-    }
-
     private static void MarkProfileSwitchRecoveryRequired()
     {
-        var errors = new List<Exception>();
-        try { WriteSetting("Configuration", "profile-switch-recovery-required"); }
-        catch (Exception error) { errors.Add(error); }
-        try { BrokerPolicy.SavedProfile = string.Empty; }
-        catch (Exception error) { errors.Add(error); }
-        try { SetWanted(false); }
-        catch (Exception error) { errors.Add(error); }
-        if (errors.Count > 0)
-            throw new AggregateException("No se pudo guardar el estado de recuperación del cambio de perfil.", errors);
+        // Preserve the durable journal and prior profile. ReconcileAsync uses
+        // that record after a network change or service restart.
+        SetWanted(false);
     }
 
     private static async Task WaitForCliRunningAsync(CancellationToken token)
@@ -226,6 +192,7 @@ internal sealed class NextDnsEngine
         private readonly string _previousProfile;
         private readonly bool _previousReportClientInfo;
         private readonly bool _previousSetupRouter;
+        private readonly ProfileSwitchJournal _journal;
 
         internal ActiveProfileSwitchActions(
             NextDnsEngine engine,
@@ -234,7 +201,8 @@ internal sealed class NextDnsEngine
             string previousSignature,
             string previousProfile,
             bool previousReportClientInfo,
-            bool previousSetupRouter)
+            bool previousSetupRouter,
+            ProfileSwitchJournal journal)
         {
             _engine = engine;
             _targetRequest = targetRequest;
@@ -243,6 +211,14 @@ internal sealed class NextDnsEngine
             _previousProfile = previousProfile;
             _previousReportClientInfo = previousReportClientInfo;
             _previousSetupRouter = previousSetupRouter;
+            _journal = journal;
+        }
+
+        public Task BeginAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            WriteProfileSwitchJournal(_journal);
+            return Task.CompletedTask;
         }
 
         public Task DisableDnsAsync(CancellationToken cancellationToken) =>
@@ -254,7 +230,7 @@ internal sealed class NextDnsEngine
                 _targetRequest.ReportClientInfo,
                 _targetRequest.SetupRouter)), cancellationToken);
 
-        public async Task RestartServiceAsync(CancellationToken cancellationToken)
+        public async Task RestartTargetServiceAsync(CancellationToken cancellationToken)
         {
             if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
             else await RunCliAsync(new[] { "start" }, cancellationToken).ConfigureAwait(false);
@@ -267,7 +243,7 @@ internal sealed class NextDnsEngine
             await VerifyResolverAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task EnableDnsAsync(CancellationToken cancellationToken)
+        public async Task EnableTargetDnsAsync(CancellationToken cancellationToken)
         {
             BrokerPolicy.SavedProfile = _targetRequest.ProfileId!.ToLowerInvariant();
             WriteSetting("Configuration", _targetSignature);
@@ -276,19 +252,81 @@ internal sealed class NextDnsEngine
             SetWanted(true);
         }
 
-        public Task RestorePreviousAsync(CancellationToken cancellationToken) =>
-            _engine.RestorePreviousConfigurationAsync(
-                _previousSignature,
-                _previousProfile,
-                _previousReportClientInfo,
-                _previousSetupRouter,
-                cancellationToken);
+        public Task CommitAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ClearProfileSwitchJournal();
+            return Task.CompletedTask;
+        }
+
+        public async Task DisableDnsForRollbackAsync(CancellationToken cancellationToken)
+        {
+            SetWanted(false);
+            await _engine._dns.DisableAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public Task SetPreviousConfigurationAsync(CancellationToken cancellationToken)
+        {
+            ValidateOwnedCli();
+            return RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
+                _previousProfile, _previousReportClientInfo, _previousSetupRouter)), cancellationToken);
+        }
+
+        public async Task RestartPreviousServiceAsync(CancellationToken cancellationToken)
+        {
+            if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
+            else await RunCliAsync(new[] { "start" }, cancellationToken).ConfigureAwait(false);
+            await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task VerifyPreviousResolverAsync(CancellationToken cancellationToken)
+        {
+            ValidateOwnedCli();
+            await VerifyResolverAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task EnablePreviousDnsAsync(CancellationToken cancellationToken)
+        {
+            BrokerPolicy.SavedProfile = _previousProfile;
+            WriteSetting("Configuration", _previousSignature);
+            SetWanted(true);
+            await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
+            SetWanted(true);
+            if (!IsCliRunning() || !_engine._dns.IsActive)
+                throw new InvalidOperationException("Windows no confirmó la restauración DNS del perfil anterior.");
+        }
+
+        public Task CompleteRollbackAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            ClearProfileSwitchJournal();
+            return Task.CompletedTask;
+        }
 
         public void MarkRecoveryRequired() => MarkProfileSwitchRecoveryRequired();
     }
 
     private BrokerResponse Status()
     {
+        if (HasProfileSwitchJournal())
+        {
+            ProfileSwitchJournal? journal = ReadProfileSwitchJournal();
+            string? priorConfiguration = journal?.PreviousConfiguration;
+            string[] priorOptions = (priorConfiguration ?? "").Split(':');
+            string? priorProfile = priorOptions.Length == 3 && Regex.IsMatch(priorOptions[0], "\\A[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant)
+                ? priorOptions[0].ToLowerInvariant()
+                : null;
+            return new BrokerResponse
+            {
+                Success = true,
+                Active = false,
+                State = "attention",
+                ProfileId = priorProfile,
+                ReportClientInfo = priorOptions.Length == 3 && bool.TryParse(priorOptions[1], out bool priorReport) && priorReport,
+                SetupRouter = priorOptions.Length == 3 && bool.TryParse(priorOptions[2], out bool priorRouter) && priorRouter
+            };
+        }
+
         bool active = false;
         if (ServiceExists("nextdns") && BrokerPolicy.OwnsCli)
         {
@@ -308,6 +346,20 @@ internal sealed class NextDnsEngine
 
     internal async Task ReconcileAsync()
     {
+        if (HasProfileSwitchJournal())
+        {
+            using var recoveryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await _operations.WaitAsync(recoveryDeadline.Token).ConfigureAwait(false);
+            try
+            {
+                if (HasProfileSwitchJournal())
+                    await RecoverPendingProfileSwitchAsync(recoveryDeadline.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) { ServiceLog.Write("Recuperación del cambio de perfil: " + ex.Message); }
+            finally { _operations.Release(); }
+            return;
+        }
+
         if (ReadSetting("Enabled") != "true")
         {
             if (_dns.HasSnapshot)
@@ -332,6 +384,8 @@ internal sealed class NextDnsEngine
         await _operations.WaitAsync(token).ConfigureAwait(false);
         try
         {
+            if (HasProfileSwitchJournal())
+                await RecoverPendingProfileSwitchAsync(token).ConfigureAwait(false);
             await _dns.DisableAsync(token).ConfigureAwait(false);
             SetWanted(false);
             if (!ServiceExists("nextdns") || !BrokerPolicy.OwnsCli) return;
@@ -415,4 +469,75 @@ internal sealed class NextDnsEngine
     private static void SetWanted(bool enabled) => WriteSetting("Enabled", enabled ? "true" : "false");
     private static string? ReadSetting(string name) { using RegistryKey? key = Registry.LocalMachine.OpenSubKey(BrokerPolicy.RegistryPath); return key?.GetValue(name) as string; }
     private static void WriteSetting(string name, string value) { using RegistryKey key = Registry.LocalMachine.CreateSubKey(BrokerPolicy.RegistryPath, true); key.SetValue(name, value); }
+
+    private async Task RecoverPendingProfileSwitchAsync(CancellationToken token)
+    {
+        ProfileSwitchJournal? journal = ReadProfileSwitchJournal();
+        if (journal is null) return;
+
+        if (!TryParseConfiguration(journal.PreviousConfiguration, out string previousProfile, out bool previousReport, out bool previousRouter) ||
+            !TryParseConfiguration(journal.TargetConfiguration, out string targetProfile, out bool targetReport, out bool targetRouter))
+            throw new InvalidOperationException("El journal del cambio de perfil no contiene una configuración válida; se conservó para revisión.");
+
+        var targetRequest = new BrokerRequest
+        {
+            Version = BrokerProtocol.Version,
+            Operation = "activate",
+            ProfileId = targetProfile,
+            ReportClientInfo = targetReport,
+            SetupRouter = targetRouter
+        };
+        var actions = new ActiveProfileSwitchActions(
+            this,
+            targetRequest,
+            journal.TargetConfiguration,
+            journal.PreviousConfiguration,
+            previousProfile,
+            previousReport,
+            previousRouter,
+            journal);
+        try
+        {
+            await ProfileSwitchTransaction.RestorePreviousAsync(actions, token).ConfigureAwait(false);
+        }
+        catch (Exception recoveryError) when (recoveryError is not OutOfMemoryException)
+        {
+            try { MarkProfileSwitchRecoveryRequired(); }
+            catch (Exception stateError) when (stateError is not OutOfMemoryException)
+            {
+                throw new AggregateException(recoveryError, stateError);
+            }
+            throw;
+        }
+    }
+
+    private static bool HasProfileSwitchJournal()
+    {
+        using RegistryKey? key = Registry.LocalMachine.OpenSubKey(BrokerPolicy.RegistryPath);
+        return key?.GetValueNames().Contains(ProfileSwitchJournalValueName, StringComparer.OrdinalIgnoreCase) == true;
+    }
+
+    private static ProfileSwitchJournal? ReadProfileSwitchJournal()
+    {
+        using RegistryKey? key = Registry.LocalMachine.OpenSubKey(BrokerPolicy.RegistryPath);
+        if (key is null || !key.GetValueNames().Contains(ProfileSwitchJournalValueName, StringComparer.OrdinalIgnoreCase)) return null;
+        object? value = key.GetValue(ProfileSwitchJournalValueName, null, RegistryValueOptions.DoNotExpandEnvironmentNames);
+        if (value is string json && ProfileSwitchJournal.TryDeserialize(json, out ProfileSwitchJournal? journal)) return journal;
+        throw new InvalidOperationException("El journal del cambio de perfil está dañado; se conservó para revisión.");
+    }
+
+    private static void WriteProfileSwitchJournal(ProfileSwitchJournal journal)
+    {
+        using RegistryKey key = Registry.LocalMachine.CreateSubKey(BrokerPolicy.RegistryPath, true);
+        key.SetValue(ProfileSwitchJournalValueName, journal.Serialize(), RegistryValueKind.String);
+        key.Flush();
+    }
+
+    private static void ClearProfileSwitchJournal()
+    {
+        using RegistryKey key = Registry.LocalMachine.OpenSubKey(BrokerPolicy.RegistryPath, true)
+            ?? throw new InvalidOperationException("Falta la clave protegida para completar el cambio de perfil.");
+        key.DeleteValue(ProfileSwitchJournalValueName, throwOnMissingValue: false);
+        key.Flush();
+    }
 }

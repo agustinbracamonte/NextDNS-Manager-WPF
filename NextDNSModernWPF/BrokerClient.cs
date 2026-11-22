@@ -18,7 +18,9 @@ namespace NextDNSModernWPF;
 /// </summary>
 internal sealed class BrokerClient
 {
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(60);
+    // The service allows 30 seconds for apply and a separate 30-second
+    // rollback window. Leave time for pipe I/O and status serialization.
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(90);
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const uint ScManagerConnect = 0x0001;
     private const uint ServiceQueryConfig = 0x0001;

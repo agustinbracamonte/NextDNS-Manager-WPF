@@ -52,6 +52,7 @@ internal static class Program
         await TestProtocolRejectionsAsync().ConfigureAwait(false);
         TestRequestValidation();
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
+        TestProfileSwitchJournal();
     }
 
     private static async Task TestProfileSwitchTransactionAsync()
@@ -60,31 +61,45 @@ internal static class Program
         await ProfileSwitchTransaction.ExecuteAsync(successful, TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(false);
         Check(successful.Calls.SequenceEqual(new[]
         {
-            "disable-dns", "configure-target", "restart", "verify-resolver", "set-ipv4", "set-ipv6"
-        }), "profile switch applies target configuration and DNS in order without rollback.");
+            "journal-begin", "disable-dns", "configure-target", "restart-target", "verify-target",
+            "set-target-ipv4", "set-target-ipv6", "journal-commit"
+        }) && !successful.JournalPresent, "profile switch journals before DNS changes and clears the journal after target DNS is active.");
 
         foreach (ProfileSwitchFailurePoint failurePoint in new[]
         {
             ProfileSwitchFailurePoint.DisableDns,
             ProfileSwitchFailurePoint.Configure,
-            ProfileSwitchFailurePoint.Restart,
+            ProfileSwitchFailurePoint.RestartTarget,
             ProfileSwitchFailurePoint.Verify,
             ProfileSwitchFailurePoint.SetIpv4,
-            ProfileSwitchFailurePoint.SetIpv6
+            ProfileSwitchFailurePoint.SetIpv6,
+            ProfileSwitchFailurePoint.Commit
         })
         {
             var failed = new FakeProfileSwitchActions(failurePoint);
             ProfileSwitchTransactionException failure = await CaptureProfileSwitchFailureAsync(
                 () => ProfileSwitchTransaction.ExecuteAsync(failed, TimeSpan.FromSeconds(1), CancellationToken.None)).ConfigureAwait(false);
-            Check(failure.PreviousProfileRestored && failed.Calls.Last() == "restore-previous" && failed.RecoveryMarkers == 0,
+            Check(failure.PreviousProfileRestored && failed.Calls.Last() == "rollback-clear-journal" && failed.RecoveryMarkers == 0 && !failed.JournalPresent,
                 $"profile switch rolls back after {failurePoint} failure.");
         }
 
-        var failedRestore = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, failRestore: true);
-        ProfileSwitchTransactionException recoveryRequired = await CaptureProfileSwitchFailureAsync(
-            () => ProfileSwitchTransaction.ExecuteAsync(failedRestore, TimeSpan.FromSeconds(1), CancellationToken.None)).ConfigureAwait(false);
-        Check(!recoveryRequired.PreviousProfileRestored && failedRestore.RecoveryMarkers == 1,
-            "failed profile rollback marks state as requiring recovery.");
+        foreach (ProfileSwitchFailurePoint rollbackFailure in new[]
+        {
+            ProfileSwitchFailurePoint.RollbackDns,
+            ProfileSwitchFailurePoint.RollbackConfigure,
+            ProfileSwitchFailurePoint.RollbackRestart,
+            ProfileSwitchFailurePoint.RollbackVerify,
+            ProfileSwitchFailurePoint.RollbackIpv4,
+            ProfileSwitchFailurePoint.RollbackIpv6,
+            ProfileSwitchFailurePoint.RollbackClear
+        })
+        {
+            var failed = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, rollbackFailurePoint: rollbackFailure);
+            ProfileSwitchTransactionException failure = await CaptureProfileSwitchFailureAsync(
+                () => ProfileSwitchTransaction.ExecuteAsync(failed, TimeSpan.FromSeconds(1), CancellationToken.None)).ConfigureAwait(false);
+            Check(!failure.PreviousProfileRestored && failed.RecoveryMarkers == 1 && failed.JournalPresent,
+                $"rollback stage {rollbackFailure} keeps the durable journal for retry.");
+        }
 
         using var callerCancellation = new CancellationTokenSource();
         var canceledApply = new FakeProfileSwitchActions(cancelCallerAfterDisable: callerCancellation);
@@ -93,11 +108,21 @@ internal static class Program
         Check(canceled.PreviousProfileRestored && canceledApply.RestoreTokenWasIndependent,
             "profile rollback runs with an independent token after caller cancellation.");
 
-        var timedOutRestore = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, timeoutRestore: true);
+        var timedOutRestore = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, timeoutRollback: true);
         ProfileSwitchTransactionException rollbackTimeout = await CaptureProfileSwitchFailureAsync(
             () => ProfileSwitchTransaction.ExecuteAsync(timedOutRestore, TimeSpan.FromMilliseconds(50), CancellationToken.None)).ConfigureAwait(false);
         Check(!rollbackTimeout.PreviousProfileRestored && timedOutRestore.RecoveryMarkers == 1,
             "timed-out profile rollback marks state as requiring recovery.");
+    }
+
+    private static void TestProfileSwitchJournal()
+    {
+        ProfileSwitchJournal expected = ProfileSwitchJournal.Create("a1b2c3:false:true", "d4e5f6:true:false");
+        Check(ProfileSwitchJournal.TryDeserialize(expected.Serialize(), out ProfileSwitchJournal? actual) && actual == expected,
+            "profile-switch journal serialization preserves previous and target configuration.");
+        Check(!ProfileSwitchJournal.TryDeserialize("{broken", out _) &&
+              !ProfileSwitchJournal.TryDeserialize("{\"Version\":2,\"PreviousConfiguration\":\"a1b2c3:false:true\",\"TargetConfiguration\":\"d4e5f6:true:false\"}", out _),
+            "malformed and future profile-switch journals are rejected for visible recovery.");
     }
 
     private static async Task<ProfileSwitchTransactionException> CaptureProfileSwitchFailureAsync(Func<Task> operation)
@@ -521,36 +546,56 @@ internal static class Program
     private enum ProfileSwitchFailurePoint
     {
         None,
+        Begin,
         DisableDns,
         Configure,
-        Restart,
+        RestartTarget,
         Verify,
         SetIpv4,
-        SetIpv6
+        SetIpv6,
+        Commit,
+        RollbackDns,
+        RollbackConfigure,
+        RollbackRestart,
+        RollbackVerify,
+        RollbackIpv4,
+        RollbackIpv6,
+        RollbackClear
     }
 
     private sealed class FakeProfileSwitchActions : IProfileSwitchActions
     {
         private readonly ProfileSwitchFailurePoint _failurePoint;
-        private readonly bool _failRestore;
-        private readonly bool _timeoutRestore;
+        private readonly ProfileSwitchFailurePoint _rollbackFailurePoint;
+        private readonly bool _timeoutRollback;
         private readonly CancellationTokenSource? _cancelCallerAfterDisable;
 
         internal FakeProfileSwitchActions(
             ProfileSwitchFailurePoint failurePoint = ProfileSwitchFailurePoint.None,
-            bool failRestore = false,
-            bool timeoutRestore = false,
+            ProfileSwitchFailurePoint rollbackFailurePoint = ProfileSwitchFailurePoint.None,
+            bool timeoutRollback = false,
             CancellationTokenSource? cancelCallerAfterDisable = null)
         {
             _failurePoint = failurePoint;
-            _failRestore = failRestore;
-            _timeoutRestore = timeoutRestore;
+            _rollbackFailurePoint = rollbackFailurePoint;
+            _timeoutRollback = timeoutRollback;
             _cancelCallerAfterDisable = cancelCallerAfterDisable;
         }
 
         internal List<string> Calls { get; } = new();
         internal int RecoveryMarkers { get; private set; }
         internal bool RestoreTokenWasIndependent { get; private set; }
+        internal bool JournalPresent { get; private set; }
+
+        public Task BeginAsync(CancellationToken cancellationToken)
+        {
+            Calls.Add("journal-begin");
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_failurePoint == ProfileSwitchFailurePoint.Begin)
+                throw new InvalidOperationException("injected journal write failure");
+            JournalPresent = true;
+            return Task.CompletedTask;
+        }
 
         public Task DisableDnsAsync(CancellationToken cancellationToken)
         {
@@ -564,39 +609,74 @@ internal static class Program
         public Task SetTargetConfigurationAsync(CancellationToken cancellationToken) =>
             StepAsync("configure-target", ProfileSwitchFailurePoint.Configure, cancellationToken);
 
-        public Task RestartServiceAsync(CancellationToken cancellationToken) =>
-            StepAsync("restart", ProfileSwitchFailurePoint.Restart, cancellationToken);
+        public Task RestartTargetServiceAsync(CancellationToken cancellationToken) =>
+            StepAsync("restart-target", ProfileSwitchFailurePoint.RestartTarget, cancellationToken);
 
         public Task VerifyTargetResolverAsync(CancellationToken cancellationToken) =>
-            StepAsync("verify-resolver", ProfileSwitchFailurePoint.Verify, cancellationToken);
+            StepAsync("verify-target", ProfileSwitchFailurePoint.Verify, cancellationToken);
 
-        public Task EnableDnsAsync(CancellationToken cancellationToken)
+        public Task EnableTargetDnsAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Calls.Add("set-ipv4");
+            Calls.Add("set-target-ipv4");
             if (_failurePoint == ProfileSwitchFailurePoint.SetIpv4)
                 throw new InvalidOperationException("injected ipv4 failure");
 
-            Calls.Add("set-ipv6");
+            Calls.Add("set-target-ipv6");
             if (_failurePoint == ProfileSwitchFailurePoint.SetIpv6)
                 throw new InvalidOperationException("injected ipv6 failure");
 
             return Task.CompletedTask;
         }
 
-        public async Task RestorePreviousAsync(CancellationToken cancellationToken)
+        public Task CommitAsync(CancellationToken cancellationToken)
+        {
+            Calls.Add("journal-commit");
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_failurePoint == ProfileSwitchFailurePoint.Commit)
+                throw new InvalidOperationException("injected journal commit failure");
+            JournalPresent = false;
+            return Task.CompletedTask;
+        }
+
+        public async Task DisableDnsForRollbackAsync(CancellationToken cancellationToken)
         {
             RestoreTokenWasIndependent = _cancelCallerAfterDisable?.IsCancellationRequested == true &&
                 !cancellationToken.IsCancellationRequested;
-            cancellationToken.ThrowIfCancellationRequested();
-            Calls.Add("restore-previous");
-            if (_timeoutRestore)
+            await RollbackStepAsync("rollback-disable-dns", ProfileSwitchFailurePoint.RollbackDns, cancellationToken).ConfigureAwait(false);
+            if (_timeoutRollback)
                 await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
-            if (_failRestore)
-                throw new InvalidOperationException("injected restore failure");
         }
 
+        public Task SetPreviousConfigurationAsync(CancellationToken cancellationToken) =>
+            RollbackStepAsync("rollback-configure", ProfileSwitchFailurePoint.RollbackConfigure, cancellationToken);
+
+        public Task RestartPreviousServiceAsync(CancellationToken cancellationToken) =>
+            RollbackStepAsync("rollback-restart", ProfileSwitchFailurePoint.RollbackRestart, cancellationToken);
+
+        public Task VerifyPreviousResolverAsync(CancellationToken cancellationToken) =>
+            RollbackStepAsync("rollback-verify", ProfileSwitchFailurePoint.RollbackVerify, cancellationToken);
+
+        public async Task EnablePreviousDnsAsync(CancellationToken cancellationToken)
+        {
+            await RollbackStepAsync("rollback-ipv4", ProfileSwitchFailurePoint.RollbackIpv4, cancellationToken).ConfigureAwait(false);
+            await RollbackStepAsync("rollback-ipv6", ProfileSwitchFailurePoint.RollbackIpv6, cancellationToken).ConfigureAwait(false);
+        }
+
+        public Task CompleteRollbackAsync(CancellationToken cancellationToken) =>
+            RollbackStepAsync("rollback-clear-journal", ProfileSwitchFailurePoint.RollbackClear, cancellationToken, () => JournalPresent = false);
+
         public void MarkRecoveryRequired() => RecoveryMarkers++;
+
+        private Task RollbackStepAsync(string name, ProfileSwitchFailurePoint failurePoint, CancellationToken cancellationToken, Action? onSuccess = null)
+        {
+            Calls.Add(name);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_rollbackFailurePoint == failurePoint)
+                throw new InvalidOperationException("injected rollback failure");
+            onSuccess?.Invoke();
+            return Task.CompletedTask;
+        }
 
         private Task StepAsync(string name, ProfileSwitchFailurePoint failurePoint, CancellationToken cancellationToken)
         {
