@@ -54,25 +54,48 @@ internal sealed class NextDnsEngine
 
         string profile = request.ProfileId!.ToLowerInvariant();
         string signature = $"{profile}:{request.ReportClientInfo}:{request.SetupRouter}";
-        bool changed = ReadSetting("Configuration") != signature;
-        if (exists && !changed && IsCliRunning() && _dns.IsActive)
+        string? previousConfiguration = ReadSetting("Configuration");
+        bool changed = previousConfiguration != signature;
+        bool cliWasRunning = exists && IsCliRunning();
+        bool wasActive = cliWasRunning && _dns.IsActive;
+        if (exists && !changed && wasActive)
         {
             SetWanted(true);
             return;
         }
+
+        if (wasActive && changed)
+        {
+            if (!TryParseConfiguration(previousConfiguration, out string previousProfile, out bool previousReport, out bool previousRouter))
+                throw new InvalidOperationException("No se puede cambiar el perfil con seguridad porque la configuración activa anterior no es válida.");
+
+            var actions = new ActiveProfileSwitchActions(
+                this,
+                request,
+                signature,
+                previousConfiguration!,
+                previousProfile,
+                previousReport,
+                previousRouter);
+            await ProfileSwitchTransaction.ExecuteAsync(actions, token).ConfigureAwait(false);
+            return;
+        }
+
+        await ApplyConfigurationAsync(request, exists, changed, signature, token).ConfigureAwait(false);
+    }
+
+    private async Task ApplyConfigurationAsync(
+        BrokerRequest request,
+        bool exists,
+        bool changed,
+        string signature,
+        CancellationToken token)
+    {
+        string profile = request.ProfileId!.ToLowerInvariant();
         if (_dns.HasSnapshot && (changed || !IsCliRunning()))
             await _dns.DisableAsync(token).ConfigureAwait(false);
 
-        string[] options = {
-            "-profile=" + profile,
-            "-auto-activate=false",
-            "-report-client-info=" + request.ReportClientInfo.ToString().ToLowerInvariant(),
-            // Windows is a desktop host. The checkbox controls the listener;
-            // router-specific platform integrations must not alter DNS here.
-            "-setup-router=false",
-            "-listen=" + (request.SetupRouter ? "0.0.0.0:53" : "127.0.0.1:53"),
-            "-listen=" + (request.SetupRouter ? "[::]:53" : "[::1]:53")
-        };
+        string[] options = BuildCliOptions(profile, request.ReportClientInfo, request.SetupRouter);
         if (!exists)
         {
             // Claim the exact fixed location before provisioning. A failed
@@ -90,7 +113,7 @@ internal sealed class NextDnsEngine
         }
         else if (!IsCliRunning()) await RunCliAsync(new[] { "start" }, token).ConfigureAwait(false);
 
-        while (!IsCliRunning()) { await Task.Delay(150, token).ConfigureAwait(false); }
+        await WaitForCliRunningAsync(token).ConfigureAwait(false);
         ValidateOwnedCli();
         await VerifyResolverAsync(token).ConfigureAwait(false);
         BrokerPolicy.SavedProfile = profile;
@@ -108,6 +131,160 @@ internal sealed class NextDnsEngine
             SetWanted(false);
             throw;
         }
+    }
+
+    private async Task RestorePreviousConfigurationAsync(
+        string signature,
+        string profile,
+        bool reportClientInfo,
+        bool setupRouter,
+        CancellationToken token)
+    {
+        SetWanted(false);
+        if (_dns.HasSnapshot)
+            await _dns.DisableAsync(token).ConfigureAwait(false);
+
+        if (!ServiceExists("nextdns") || !BrokerPolicy.OwnsCli)
+            throw new InvalidOperationException("No se encontró el servicio NextDNS anterior para restaurar el perfil.");
+
+        ValidateOwnedCli();
+        await RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(profile, reportClientInfo, setupRouter)), token).ConfigureAwait(false);
+        if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, token).ConfigureAwait(false);
+        else await RunCliAsync(new[] { "start" }, token).ConfigureAwait(false);
+
+        await WaitForCliRunningAsync(token).ConfigureAwait(false);
+        ValidateOwnedCli();
+        await VerifyResolverAsync(token).ConfigureAwait(false);
+
+        BrokerPolicy.SavedProfile = profile;
+        WriteSetting("Configuration", signature);
+        await _dns.EnableAsync(token).ConfigureAwait(false);
+        SetWanted(true);
+
+        BrokerResponse restored = Status();
+        if (!restored.Active || !string.Equals(restored.ProfileId, profile, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Windows no confirmó la restauración del perfil anterior.");
+    }
+
+    private static void MarkProfileSwitchRecoveryRequired()
+    {
+        var errors = new List<Exception>();
+        try { WriteSetting("Configuration", "profile-switch-recovery-required"); }
+        catch (Exception error) { errors.Add(error); }
+        try { BrokerPolicy.SavedProfile = string.Empty; }
+        catch (Exception error) { errors.Add(error); }
+        try { SetWanted(false); }
+        catch (Exception error) { errors.Add(error); }
+        if (errors.Count > 0)
+            throw new AggregateException("No se pudo guardar el estado de recuperación del cambio de perfil.", errors);
+    }
+
+    private static async Task WaitForCliRunningAsync(CancellationToken token)
+    {
+        while (!IsCliRunning())
+            await Task.Delay(150, token).ConfigureAwait(false);
+    }
+
+    private static string[] BuildCliOptions(string profile, bool reportClientInfo, bool setupRouter) =>
+    [
+        "-profile=" + profile,
+        "-auto-activate=false",
+        "-report-client-info=" + reportClientInfo.ToString().ToLowerInvariant(),
+        // Windows is a desktop host. The checkbox controls the listener;
+        // router-specific platform integrations must not alter DNS here.
+        "-setup-router=false",
+        "-listen=" + (setupRouter ? "0.0.0.0:53" : "127.0.0.1:53"),
+        "-listen=" + (setupRouter ? "[::]:53" : "[::1]:53")
+    ];
+
+    private static bool TryParseConfiguration(string? signature, out string profile, out bool reportClientInfo, out bool setupRouter)
+    {
+        profile = string.Empty;
+        reportClientInfo = false;
+        setupRouter = false;
+        if (string.IsNullOrWhiteSpace(signature)) return false;
+
+        string[] parts = signature.Split(':');
+        if (parts.Length != 3 ||
+            !Regex.IsMatch(parts[0], "\\A[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant) ||
+            !bool.TryParse(parts[1], out reportClientInfo) ||
+            !bool.TryParse(parts[2], out setupRouter))
+        {
+            return false;
+        }
+
+        profile = parts[0].ToLowerInvariant();
+        return true;
+    }
+
+    private sealed class ActiveProfileSwitchActions : IProfileSwitchActions
+    {
+        private readonly NextDnsEngine _engine;
+        private readonly BrokerRequest _targetRequest;
+        private readonly string _targetSignature;
+        private readonly string _previousSignature;
+        private readonly string _previousProfile;
+        private readonly bool _previousReportClientInfo;
+        private readonly bool _previousSetupRouter;
+
+        internal ActiveProfileSwitchActions(
+            NextDnsEngine engine,
+            BrokerRequest targetRequest,
+            string targetSignature,
+            string previousSignature,
+            string previousProfile,
+            bool previousReportClientInfo,
+            bool previousSetupRouter)
+        {
+            _engine = engine;
+            _targetRequest = targetRequest;
+            _targetSignature = targetSignature;
+            _previousSignature = previousSignature;
+            _previousProfile = previousProfile;
+            _previousReportClientInfo = previousReportClientInfo;
+            _previousSetupRouter = previousSetupRouter;
+        }
+
+        public Task DisableDnsAsync(CancellationToken cancellationToken) =>
+            _engine._dns.DisableAsync(cancellationToken);
+
+        public Task SetTargetConfigurationAsync(CancellationToken cancellationToken) =>
+            RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
+                _targetRequest.ProfileId!.ToLowerInvariant(),
+                _targetRequest.ReportClientInfo,
+                _targetRequest.SetupRouter)), cancellationToken);
+
+        public async Task RestartServiceAsync(CancellationToken cancellationToken)
+        {
+            if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
+            else await RunCliAsync(new[] { "start" }, cancellationToken).ConfigureAwait(false);
+            await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task VerifyTargetResolverAsync(CancellationToken cancellationToken)
+        {
+            ValidateOwnedCli();
+            await VerifyResolverAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        public async Task EnableDnsAsync(CancellationToken cancellationToken)
+        {
+            BrokerPolicy.SavedProfile = _targetRequest.ProfileId!.ToLowerInvariant();
+            WriteSetting("Configuration", _targetSignature);
+            SetWanted(true);
+            await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
+            SetWanted(true);
+        }
+
+        public Task RestorePreviousAsync(CancellationToken cancellationToken) =>
+            _engine.RestorePreviousConfigurationAsync(
+                _previousSignature,
+                _previousProfile,
+                _previousReportClientInfo,
+                _previousSetupRouter,
+                cancellationToken);
+
+        public void MarkRecoveryRequired() => MarkProfileSwitchRecoveryRequired();
     }
 
     private BrokerResponse Status()

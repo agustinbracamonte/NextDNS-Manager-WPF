@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,7 +17,12 @@ using NextDNSManager.Shared;
 
 namespace NextDNSModernWPF
 {
-    public class Profile { public string Name { get; set; } public string ID { get; set; } }
+    public class Profile
+    {
+        public string Name { get; set; }
+        public string ID { get; set; }
+        public override string ToString() => Name ?? string.Empty;
+    }
 
     public partial class MainWindow : Window
     {
@@ -28,12 +34,20 @@ namespace NextDNSModernWPF
 
         private bool isProtected = false;
         private bool hasBrokerStatus;
+        private bool brokerStatusUncertain;
         private bool needsDnsRestore;
         private string activeProfileId;
         private string brokerStatusError;
+        private bool suppressProfileSelectionChanged;
+        private bool brokerActionInProgress;
+        private bool profileSwitchInProgress;
+        private bool profileSwitchWorkerRunning;
+        private bool statusCheckInProgress;
+        private Profile pendingProfileSelection;
         private readonly BrokerClient brokerClient = new BrokerClient();
         private readonly UpdateChecker updateChecker = new UpdateChecker();
         private DispatcherTimer updateTimer;
+        private DispatcherTimer brokerStatusRetryTimer;
         private bool updateCheckInProgress;
         private UpdateInfo availableUpdate;
         private System.Windows.Forms.NotifyIcon _notifyIcon;
@@ -46,6 +60,9 @@ namespace NextDNSModernWPF
         {
             InitializeComponent();
             PreviewKeyDown += MainWindow_PreviewKeyDown;
+            cmbProfiles.SelectionChanged += CmbProfiles_SelectionChanged;
+            brokerStatusRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            brokerStatusRetryTimer.Tick += BrokerStatusRetryTimer_Tick;
 
             try
             {
@@ -132,6 +149,8 @@ namespace NextDNSModernWPF
         protected override void OnClosed(EventArgs e)
         {
             if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
+            if (brokerStatusRetryTimer != null) { brokerStatusRetryTimer.Stop(); brokerStatusRetryTimer.Tick -= BrokerStatusRetryTimer_Tick; }
+            cmbProfiles.SelectionChanged -= CmbProfiles_SelectionChanged;
             DisposeTrayIcon();
             base.OnClosed(e);
         }

@@ -51,6 +51,64 @@ internal static class Program
         await TestProtocolRoundTripAsync().ConfigureAwait(false);
         await TestProtocolRejectionsAsync().ConfigureAwait(false);
         TestRequestValidation();
+        await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
+    }
+
+    private static async Task TestProfileSwitchTransactionAsync()
+    {
+        var successful = new FakeProfileSwitchActions();
+        await ProfileSwitchTransaction.ExecuteAsync(successful, TimeSpan.FromSeconds(1), CancellationToken.None).ConfigureAwait(false);
+        Check(successful.Calls.SequenceEqual(new[]
+        {
+            "disable-dns", "configure-target", "restart", "verify-resolver", "set-ipv4", "set-ipv6"
+        }), "profile switch applies target configuration and DNS in order without rollback.");
+
+        foreach (ProfileSwitchFailurePoint failurePoint in new[]
+        {
+            ProfileSwitchFailurePoint.DisableDns,
+            ProfileSwitchFailurePoint.Configure,
+            ProfileSwitchFailurePoint.Restart,
+            ProfileSwitchFailurePoint.Verify,
+            ProfileSwitchFailurePoint.SetIpv4,
+            ProfileSwitchFailurePoint.SetIpv6
+        })
+        {
+            var failed = new FakeProfileSwitchActions(failurePoint);
+            ProfileSwitchTransactionException failure = await CaptureProfileSwitchFailureAsync(
+                () => ProfileSwitchTransaction.ExecuteAsync(failed, TimeSpan.FromSeconds(1), CancellationToken.None)).ConfigureAwait(false);
+            Check(failure.PreviousProfileRestored && failed.Calls.Last() == "restore-previous" && failed.RecoveryMarkers == 0,
+                $"profile switch rolls back after {failurePoint} failure.");
+        }
+
+        var failedRestore = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, failRestore: true);
+        ProfileSwitchTransactionException recoveryRequired = await CaptureProfileSwitchFailureAsync(
+            () => ProfileSwitchTransaction.ExecuteAsync(failedRestore, TimeSpan.FromSeconds(1), CancellationToken.None)).ConfigureAwait(false);
+        Check(!recoveryRequired.PreviousProfileRestored && failedRestore.RecoveryMarkers == 1,
+            "failed profile rollback marks state as requiring recovery.");
+
+        using var callerCancellation = new CancellationTokenSource();
+        var canceledApply = new FakeProfileSwitchActions(cancelCallerAfterDisable: callerCancellation);
+        ProfileSwitchTransactionException canceled = await CaptureProfileSwitchFailureAsync(
+            () => ProfileSwitchTransaction.ExecuteAsync(canceledApply, TimeSpan.FromSeconds(1), callerCancellation.Token)).ConfigureAwait(false);
+        Check(canceled.PreviousProfileRestored && canceledApply.RestoreTokenWasIndependent,
+            "profile rollback runs with an independent token after caller cancellation.");
+
+        var timedOutRestore = new FakeProfileSwitchActions(ProfileSwitchFailurePoint.Configure, timeoutRestore: true);
+        ProfileSwitchTransactionException rollbackTimeout = await CaptureProfileSwitchFailureAsync(
+            () => ProfileSwitchTransaction.ExecuteAsync(timedOutRestore, TimeSpan.FromMilliseconds(50), CancellationToken.None)).ConfigureAwait(false);
+        Check(!rollbackTimeout.PreviousProfileRestored && timedOutRestore.RecoveryMarkers == 1,
+            "timed-out profile rollback marks state as requiring recovery.");
+    }
+
+    private static async Task<ProfileSwitchTransactionException> CaptureProfileSwitchFailureAsync(Func<Task> operation)
+    {
+        Exception? failure = null;
+        try { await operation().ConfigureAwait(false); }
+        catch (Exception exception) { failure = exception; }
+
+        if (failure is ProfileSwitchTransactionException transactionFailure)
+            return transactionFailure;
+        throw new InvalidOperationException("Expected a profile-switch transaction failure.", failure);
     }
 
     private static async Task TestProtocolRoundTripAsync()
@@ -458,6 +516,96 @@ internal static class Program
     {
         if (!condition) throw new InvalidOperationException("Assertion failed: " + label);
         _assertions++;
+    }
+
+    private enum ProfileSwitchFailurePoint
+    {
+        None,
+        DisableDns,
+        Configure,
+        Restart,
+        Verify,
+        SetIpv4,
+        SetIpv6
+    }
+
+    private sealed class FakeProfileSwitchActions : IProfileSwitchActions
+    {
+        private readonly ProfileSwitchFailurePoint _failurePoint;
+        private readonly bool _failRestore;
+        private readonly bool _timeoutRestore;
+        private readonly CancellationTokenSource? _cancelCallerAfterDisable;
+
+        internal FakeProfileSwitchActions(
+            ProfileSwitchFailurePoint failurePoint = ProfileSwitchFailurePoint.None,
+            bool failRestore = false,
+            bool timeoutRestore = false,
+            CancellationTokenSource? cancelCallerAfterDisable = null)
+        {
+            _failurePoint = failurePoint;
+            _failRestore = failRestore;
+            _timeoutRestore = timeoutRestore;
+            _cancelCallerAfterDisable = cancelCallerAfterDisable;
+        }
+
+        internal List<string> Calls { get; } = new();
+        internal int RecoveryMarkers { get; private set; }
+        internal bool RestoreTokenWasIndependent { get; private set; }
+
+        public Task DisableDnsAsync(CancellationToken cancellationToken)
+        {
+            Calls.Add("disable-dns");
+            if (_failurePoint == ProfileSwitchFailurePoint.DisableDns)
+                throw new InvalidOperationException("injected disable failure");
+            _cancelCallerAfterDisable?.Cancel();
+            return Task.CompletedTask;
+        }
+
+        public Task SetTargetConfigurationAsync(CancellationToken cancellationToken) =>
+            StepAsync("configure-target", ProfileSwitchFailurePoint.Configure, cancellationToken);
+
+        public Task RestartServiceAsync(CancellationToken cancellationToken) =>
+            StepAsync("restart", ProfileSwitchFailurePoint.Restart, cancellationToken);
+
+        public Task VerifyTargetResolverAsync(CancellationToken cancellationToken) =>
+            StepAsync("verify-resolver", ProfileSwitchFailurePoint.Verify, cancellationToken);
+
+        public Task EnableDnsAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls.Add("set-ipv4");
+            if (_failurePoint == ProfileSwitchFailurePoint.SetIpv4)
+                throw new InvalidOperationException("injected ipv4 failure");
+
+            Calls.Add("set-ipv6");
+            if (_failurePoint == ProfileSwitchFailurePoint.SetIpv6)
+                throw new InvalidOperationException("injected ipv6 failure");
+
+            return Task.CompletedTask;
+        }
+
+        public async Task RestorePreviousAsync(CancellationToken cancellationToken)
+        {
+            RestoreTokenWasIndependent = _cancelCallerAfterDisable?.IsCancellationRequested == true &&
+                !cancellationToken.IsCancellationRequested;
+            cancellationToken.ThrowIfCancellationRequested();
+            Calls.Add("restore-previous");
+            if (_timeoutRestore)
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken).ConfigureAwait(false);
+            if (_failRestore)
+                throw new InvalidOperationException("injected restore failure");
+        }
+
+        public void MarkRecoveryRequired() => RecoveryMarkers++;
+
+        private Task StepAsync(string name, ProfileSwitchFailurePoint failurePoint, CancellationToken cancellationToken)
+        {
+            Calls.Add(name);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_failurePoint == failurePoint)
+                throw new InvalidOperationException("injected stage failure");
+            return Task.CompletedTask;
+        }
     }
 
     private static void Require(bool condition, string message)
