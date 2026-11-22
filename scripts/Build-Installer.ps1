@@ -4,13 +4,13 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$appVersion = '1.1.0'
+$appVersion = '1.1.1'
 $expectedCliSha256 = '5a603c759bc4a854a6aae46cadb91ae00a95ba5bb0591b985f49a95597856b8e'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'NextDNSModernWPF\NextDNSModernWPF.csproj'
 $installerScript = Join-Path $projectRoot 'installer\NextDNSManager.iss'
 $artifactDirectory = Join-Path $projectRoot 'artifacts'
-$publishDirectory = Join-Path $projectRoot 'artifacts\publish-1.1.0-win-x64'
+$publishDirectory = Join-Path $projectRoot 'artifacts\publish-1.1.1-win-x64'
 $installerName = "NextDNS-Manager-$appVersion-Setup-x64.exe"
 $installerPath = Join-Path $artifactDirectory $installerName
 
