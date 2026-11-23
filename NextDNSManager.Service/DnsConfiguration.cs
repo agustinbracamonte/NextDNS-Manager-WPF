@@ -197,6 +197,7 @@ internal sealed class DnsConfiguration
 
         using RegistryKey key = OpenPolicyKey(writable: true);
         key.DeleteValue(SnapshotValueName, throwOnMissingValue: false);
+        key.Flush();
     }
 
     private static async Task<List<string>> RestoreAdaptersAsync(
@@ -388,6 +389,7 @@ internal sealed class DnsConfiguration
         string json = JsonSerializer.Serialize(snapshot, JsonOptions);
         using RegistryKey key = OpenPolicyKey(writable: true);
         key.SetValue(SnapshotValueName, json, RegistryValueKind.String);
+        key.Flush();
     }
 
     private static RegistryKey OpenPolicyKey(bool writable) =>
