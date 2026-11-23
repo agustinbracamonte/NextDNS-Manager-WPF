@@ -261,14 +261,19 @@ internal sealed class NextDnsEngine
         public Task CommitAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            ClearProfileSwitchJournal();
+            WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.CommittedPhase });
+            try { ClearProfileSwitchJournal(); }
+            catch (Exception error) when (error is not OutOfMemoryException)
+            {
+                ServiceLog.Write("Limpieza pendiente del cambio de perfil: " + error.Message);
+            }
             return Task.CompletedTask;
         }
 
         public Task BeginRollbackAsync(CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            WriteProfileSwitchJournal(_journal);
+            WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.RollingBackPhase });
             return Task.CompletedTask;
         }
 
@@ -512,6 +517,12 @@ internal sealed class NextDnsEngine
             throw;
         }
         if (journal is null) return;
+
+        if (!journal.RequiresRollback)
+        {
+            ClearProfileSwitchJournal();
+            return;
+        }
 
         if (!TryParseConfiguration(journal.PreviousConfiguration, out string previousProfile, out bool previousReport, out bool previousRouter) ||
             !TryParseConfiguration(journal.TargetConfiguration, out string targetProfile, out bool targetReport, out bool targetRouter))
