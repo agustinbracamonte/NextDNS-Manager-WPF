@@ -138,11 +138,17 @@ internal sealed class NextDnsEngine
         }
     }
 
-    private static void MarkProfileSwitchRecoveryRequired()
+    private static void MarkProfileSwitchRecoveryRequired(ProfileSwitchJournal journal)
     {
         // Preserve the durable journal and prior profile. ReconcileAsync uses
         // that record after a network change or service restart.
-        SetWanted(false);
+        var errors = new List<Exception>();
+        try { WriteProfileSwitchJournal(journal); }
+        catch (Exception error) { errors.Add(error); }
+        try { SetWanted(false); }
+        catch (Exception error) { errors.Add(error); }
+        if (errors.Count > 0)
+            throw new AggregateException("No se pudo guardar el estado de recuperación del cambio de perfil.", errors);
     }
 
     private static async Task WaitForCliRunningAsync(CancellationToken token)
@@ -259,6 +265,13 @@ internal sealed class NextDnsEngine
             return Task.CompletedTask;
         }
 
+        public Task BeginRollbackAsync(CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            WriteProfileSwitchJournal(_journal);
+            return Task.CompletedTask;
+        }
+
         public async Task DisableDnsForRollbackAsync(CancellationToken cancellationToken)
         {
             SetWanted(false);
@@ -303,27 +316,32 @@ internal sealed class NextDnsEngine
             return Task.CompletedTask;
         }
 
-        public void MarkRecoveryRequired() => MarkProfileSwitchRecoveryRequired();
+        public void MarkRecoveryRequired() => MarkProfileSwitchRecoveryRequired(_journal);
     }
 
     private BrokerResponse Status()
     {
         if (HasProfileSwitchJournal())
         {
-            ProfileSwitchJournal? journal = ReadProfileSwitchJournal();
+            ProfileSwitchJournal? journal = null;
+            try { journal = ReadProfileSwitchJournal(); }
+            catch (InvalidOperationException) { }
             string? priorConfiguration = journal?.PreviousConfiguration;
             string[] priorOptions = (priorConfiguration ?? "").Split(':');
             string? priorProfile = priorOptions.Length == 3 && Regex.IsMatch(priorOptions[0], "\\A[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant)
                 ? priorOptions[0].ToLowerInvariant()
-                : null;
+                : (Regex.IsMatch(BrokerPolicy.SavedProfile ?? "", "\\A[0-9a-fA-F]{6}\\z", RegexOptions.CultureInvariant)
+                    ? BrokerPolicy.SavedProfile!.ToLowerInvariant()
+                    : null);
+            string[] displayedOptions = (priorConfiguration ?? ReadSetting("Configuration") ?? "").Split(':');
             return new BrokerResponse
             {
                 Success = true,
                 Active = false,
                 State = "attention",
                 ProfileId = priorProfile,
-                ReportClientInfo = priorOptions.Length == 3 && bool.TryParse(priorOptions[1], out bool priorReport) && priorReport,
-                SetupRouter = priorOptions.Length == 3 && bool.TryParse(priorOptions[2], out bool priorRouter) && priorRouter
+                ReportClientInfo = displayedOptions.Length == 3 && bool.TryParse(displayedOptions[1], out bool priorReport) && priorReport,
+                SetupRouter = displayedOptions.Length == 3 && bool.TryParse(displayedOptions[2], out bool priorRouter) && priorRouter
             };
         }
 
@@ -346,37 +364,46 @@ internal sealed class NextDnsEngine
 
     internal async Task ReconcileAsync()
     {
-        if (HasProfileSwitchJournal())
-        {
-            using var recoveryDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-            await _operations.WaitAsync(recoveryDeadline.Token).ConfigureAwait(false);
-            try
-            {
-                if (HasProfileSwitchJournal())
-                    await RecoverPendingProfileSwitchAsync(recoveryDeadline.Token).ConfigureAwait(false);
-            }
-            catch (Exception ex) { ServiceLog.Write("Recuperación del cambio de perfil: " + ex.Message); }
-            finally { _operations.Release(); }
-            return;
-        }
-
-        if (ReadSetting("Enabled") != "true")
-        {
-            if (_dns.HasSnapshot)
-            {
-                try { await ExecuteAsync(new BrokerRequest { Operation = "deactivate" }).ConfigureAwait(false); }
-                catch (Exception ex) { ServiceLog.Write("Restauración DNS pendiente: " + ex.Message); }
-            }
-            return;
-        }
-        string? config = ReadSetting("Configuration");
-        string[] parts = config?.Split(':') ?? Array.Empty<string>();
-        if (parts.Length != 3 || !bool.TryParse(parts[1], out bool report) || !bool.TryParse(parts[2], out bool router)) return;
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
-            await ExecuteAsync(new BrokerRequest { Operation = "activate", ProfileId = parts[0], ReportClientInfo = report, SetupRouter = router }).ConfigureAwait(false);
+            await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) { ServiceLog.Write("Reconciliación en espera: " + ex.Message); return; }
+
+        try
+        {
+            // Read the recovery marker and desired configuration under the
+            // same gate as activation. Otherwise a queued network event could
+            // capture the old profile, wait for a switch, and reactivate stale
+            // settings after the new profile has committed.
+            if (HasProfileSwitchJournal())
+            {
+                await RecoverPendingProfileSwitchAsync(deadline.Token).ConfigureAwait(false);
+                return;
+            }
+
+            if (ReadSetting("Enabled") != "true")
+            {
+                SetWanted(false);
+                if (_dns.HasSnapshot)
+                    await _dns.DisableAsync(deadline.Token).ConfigureAwait(false);
+                return;
+            }
+
+            string? config = ReadSetting("Configuration");
+            if (!TryParseConfiguration(config, out string profile, out bool report, out bool router)) return;
+            await EnableAsync(new BrokerRequest
+            {
+                Version = BrokerProtocol.Version,
+                Operation = "activate",
+                ProfileId = profile,
+                ReportClientInfo = report,
+                SetupRouter = router
+            }, deadline.Token).ConfigureAwait(false);
         }
         catch (Exception ex) { ServiceLog.Write("Reconciliación DNS: " + ex.Message); }
+        finally { _operations.Release(); }
     }
 
     internal async Task RemoveOwnedCliAsync(CancellationToken token)
@@ -472,7 +499,18 @@ internal sealed class NextDnsEngine
 
     private async Task RecoverPendingProfileSwitchAsync(CancellationToken token)
     {
-        ProfileSwitchJournal? journal = ReadProfileSwitchJournal();
+        ProfileSwitchJournal? journal;
+        try { journal = ReadProfileSwitchJournal(); }
+        catch (InvalidOperationException journalError)
+        {
+            SetWanted(false);
+            try { await _dns.DisableAsync(token).ConfigureAwait(false); }
+            catch (Exception dnsError) when (dnsError is not OutOfMemoryException)
+            {
+                throw new AggregateException(journalError, dnsError);
+            }
+            throw;
+        }
         if (journal is null) return;
 
         if (!TryParseConfiguration(journal.PreviousConfiguration, out string previousProfile, out bool previousReport, out bool previousRouter) ||
@@ -502,7 +540,7 @@ internal sealed class NextDnsEngine
         }
         catch (Exception recoveryError) when (recoveryError is not OutOfMemoryException)
         {
-            try { MarkProfileSwitchRecoveryRequired(); }
+            try { MarkProfileSwitchRecoveryRequired(journal); }
             catch (Exception stateError) when (stateError is not OutOfMemoryException)
             {
                 throw new AggregateException(recoveryError, stateError);

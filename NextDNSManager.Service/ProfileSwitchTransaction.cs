@@ -11,6 +11,7 @@ internal interface IProfileSwitchActions
     Task VerifyTargetResolverAsync(CancellationToken cancellationToken);
     Task EnableTargetDnsAsync(CancellationToken cancellationToken);
     Task CommitAsync(CancellationToken cancellationToken);
+    Task BeginRollbackAsync(CancellationToken cancellationToken);
     Task DisableDnsForRollbackAsync(CancellationToken cancellationToken);
     Task SetPreviousConfigurationAsync(CancellationToken cancellationToken);
     Task RestartPreviousServiceAsync(CancellationToken cancellationToken);
@@ -38,12 +39,17 @@ internal sealed class ProfileSwitchTransactionException : InvalidOperationExcept
 /// Durable record written before DNS is changed. Its presence means startup
 /// recovery must restore the prior configuration before accepting new work.
 /// </summary>
-internal sealed record ProfileSwitchJournal(int Version, string PreviousConfiguration, string TargetConfiguration)
+internal sealed record ProfileSwitchJournal(int Version, string Phase, string PreviousConfiguration, string TargetConfiguration)
 {
     internal const int CurrentVersion = 1;
+    internal const string ApplyingPhase = "applying";
+    internal const string CommittedPhase = "committed";
+    internal const string RollingBackPhase = "rolling-back";
 
     internal static ProfileSwitchJournal Create(string previousConfiguration, string targetConfiguration) =>
-        new(CurrentVersion, previousConfiguration, targetConfiguration);
+        new(CurrentVersion, ApplyingPhase, previousConfiguration, targetConfiguration);
+
+    internal bool RequiresRollback => !string.Equals(Phase, CommittedPhase, StringComparison.Ordinal);
 
     internal string Serialize() => JsonSerializer.Serialize(this);
 
@@ -56,6 +62,7 @@ internal sealed record ProfileSwitchJournal(int Version, string PreviousConfigur
         {
             ProfileSwitchJournal? candidate = JsonSerializer.Deserialize<ProfileSwitchJournal>(json);
             if (candidate is null || candidate.Version != CurrentVersion ||
+                candidate.Phase is not (ApplyingPhase or CommittedPhase or RollingBackPhase) ||
                 string.IsNullOrWhiteSpace(candidate.PreviousConfiguration) ||
                 string.IsNullOrWhiteSpace(candidate.TargetConfiguration))
                 return false;
@@ -125,6 +132,7 @@ internal static class ProfileSwitchTransaction
 
     internal static async Task RestorePreviousAsync(IProfileSwitchActions actions, CancellationToken cancellationToken)
     {
+        await actions.BeginRollbackAsync(cancellationToken).ConfigureAwait(false);
         await actions.DisableDnsForRollbackAsync(cancellationToken).ConfigureAwait(false);
         await actions.SetPreviousConfigurationAsync(cancellationToken).ConfigureAwait(false);
         await actions.RestartPreviousServiceAsync(cancellationToken).ConfigureAwait(false);

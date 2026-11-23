@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <Compile Include="..\Shared\BrokerProtocol.cs" Link="Shared\BrokerProtocol.cs" />
+    <Compile Include="..\Shared\ProfileSwitchSelection.cs" Link="Shared\ProfileSwitchSelection.cs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -279,9 +279,15 @@ namespace NextDNSModernWPF
 
         private async void BtnAction_Click(object sender, RoutedEventArgs e)
         {
-            if (brokerActionInProgress || profileSwitchInProgress) return;
+            if (brokerActionInProgress || profileSwitchInProgress || statusCheckInProgress) return;
+            if (brokerStatusUncertain)
+            {
+                await CheckCurrentStatusAsync();
+                return;
+            }
             btnAction.IsEnabled = false;
             brokerActionInProgress = true;
+            UpdateUI();
             try
             {
                 string operation = isProtected || needsDnsRestore ? "deactivate" : "activate";
@@ -337,8 +343,9 @@ namespace NextDNSModernWPF
             finally
             {
                 brokerActionInProgress = false;
-                btnAction.IsEnabled = true;
                 UpdateUI();
+                if (pendingProfileSelection != null && isProtected && !brokerStatusUncertain && !needsDnsRestore)
+                    _ = ProcessPendingProfileSwitchesAsync();
             }
         }
 
@@ -347,6 +354,16 @@ namespace NextDNSModernWPF
             if (suppressProfileSelectionChanged) return;
 
             Profile selected = cmbProfiles.SelectedItem as Profile;
+            if (statusCheckInProgress)
+            {
+                SelectProfileById(activeProfileId);
+                return;
+            }
+            if (brokerActionInProgress && !profileSwitchInProgress)
+            {
+                SelectProfileById(activeProfileId);
+                return;
+            }
             if (brokerStatusUncertain)
             {
                 SelectProfileById(activeProfileId);
@@ -354,8 +371,16 @@ namespace NextDNSModernWPF
             }
             if (!isProtected || !hasBrokerStatus || needsDnsRestore || selected == null)
                 return;
-            if (string.Equals(selected.ID, activeProfileId, StringComparison.OrdinalIgnoreCase))
+
+            string latestSelection = ProfileSwitchSelection.QueueLatest(
+                selected.ID,
+                activeProfileId,
+                profileSwitchInProgress ? switchingToProfile?.ID : null);
+            if (latestSelection == null)
+            {
+                pendingProfileSelection = null;
                 return;
+            }
 
             pendingProfileSelection = selected;
             if (!profileSwitchWorkerRunning && !brokerActionInProgress)
@@ -460,6 +485,7 @@ namespace NextDNSModernWPF
         {
             if (statusCheckInProgress || brokerActionInProgress || profileSwitchInProgress) return;
             statusCheckInProgress = true;
+            UpdateUI();
             try
             {
                 BrokerResponse response = await brokerClient.SendAsync(new BrokerRequest
@@ -492,7 +518,7 @@ namespace NextDNSModernWPF
                 brokerStatusRetryTimer?.Start();
             UpdateUI();
             if (enableActionWhenComplete)
-                btnAction.IsEnabled = true;
+                btnAction.IsEnabled = !brokerStatusUncertain;
         }
 
         private void ApplyBrokerStatus(BrokerResponse response)
@@ -515,7 +541,8 @@ namespace NextDNSModernWPF
 
         private void UpdateUI()
         {
-            cmbProfiles.IsEnabled = !brokerActionInProgress || profileSwitchInProgress;
+            cmbProfiles.IsEnabled = !statusCheckInProgress && (!brokerActionInProgress || profileSwitchInProgress);
+            btnAction.IsEnabled = !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (needsDnsRestore)
             {
                 lblStatus.Text = "REQUIERE ATENCIÓN";
