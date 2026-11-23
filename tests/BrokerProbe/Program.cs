@@ -132,6 +132,13 @@ internal static class Program
         Check(!ProfileSwitchJournal.TryDeserialize("{broken", out _) &&
               !ProfileSwitchJournal.TryDeserialize("{\"Version\":2,\"PreviousConfiguration\":\"a1b2c3:false:true\",\"TargetConfiguration\":\"d4e5f6:true:false\"}", out _),
             "malformed and future profile-switch journals are rejected for visible recovery.");
+        foreach (string phase in new[] { ProfileSwitchJournal.ApplyingPhase, ProfileSwitchJournal.RollingBackPhase, ProfileSwitchJournal.CommittedPhase })
+        {
+            ProfileSwitchJournal saved = expected with { Phase = phase };
+            Check(ProfileSwitchJournal.TryDeserialize(saved.Serialize(), out ProfileSwitchJournal? recovered) &&
+                  recovered == saved && recovered.RequiresRollback == (phase != ProfileSwitchJournal.CommittedPhase),
+                $"restart recovery preserves phase {phase} and selects the expected recovery action.");
+        }
     }
 
     private static void TestProfileSwitchSelection()
