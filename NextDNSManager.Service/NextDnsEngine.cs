@@ -97,6 +97,7 @@ internal sealed class NextDnsEngine
         CancellationToken token)
     {
         string profile = request.ProfileId!.ToLowerInvariant();
+        bool wantedBefore = ReadSetting("Enabled") == "true";
         if (_dns.HasSnapshot && (changed || !IsCliRunning()))
             await _dns.DisableAsync(token).ConfigureAwait(false);
 
@@ -114,9 +115,9 @@ internal sealed class NextDnsEngine
         {
             await RunCliAsync(new[] { "config", "set" }.Concat(options), token).ConfigureAwait(false);
             if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, token).ConfigureAwait(false);
-            else await RunCliAsync(new[] { "start" }, token).ConfigureAwait(false);
+            else await EnsureCliRunningAsync(token).ConfigureAwait(false);
         }
-        else if (!IsCliRunning()) await RunCliAsync(new[] { "start" }, token).ConfigureAwait(false);
+        else if (!IsCliRunning()) await EnsureCliRunningAsync(token).ConfigureAwait(false);
 
         await WaitForCliRunningAsync(token).ConfigureAwait(false);
         ValidateOwnedCli();
@@ -132,10 +133,19 @@ internal sealed class NextDnsEngine
         catch
         {
             using var restoreDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await _dns.DisableAsync(restoreDeadline.Token).ConfigureAwait(false);
-            SetWanted(false);
+            try { await _dns.DisableAsync(restoreDeadline.Token).ConfigureAwait(false); }
+            finally { SetWanted(wantedBefore); }
             throw;
         }
+    }
+
+    private static async Task EnsureCliRunningAsync(CancellationToken token)
+    {
+        using var service = new ServiceController("nextdns");
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => { service.Refresh(); return service.Status; },
+            cancellation => RunCliAsync(new[] { "start" }, cancellation),
+            cancellation => Task.Delay(200, cancellation), token).ConfigureAwait(false);
     }
 
     private static void MarkProfileSwitchRecoveryRequired(ProfileSwitchJournal journal)
@@ -239,7 +249,7 @@ internal sealed class NextDnsEngine
         public async Task RestartTargetServiceAsync(CancellationToken cancellationToken)
         {
             if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
-            else await RunCliAsync(new[] { "start" }, cancellationToken).ConfigureAwait(false);
+            else await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
             await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -293,7 +303,7 @@ internal sealed class NextDnsEngine
         public async Task RestartPreviousServiceAsync(CancellationToken cancellationToken)
         {
             if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
-            else await RunCliAsync(new[] { "start" }, cancellationToken).ConfigureAwait(false);
+            else await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
             await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -367,14 +377,14 @@ internal sealed class NextDnsEngine
         };
     }
 
-    internal async Task ReconcileAsync()
+    internal async Task<bool> ReconcileAsync()
     {
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         try
         {
             await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) { ServiceLog.Write("Reconciliación en espera: " + ex.Message); return; }
+        catch (Exception ex) { ServiceLog.Write("Reconciliación en espera: " + ex.Message); return false; }
 
         try
         {
@@ -385,7 +395,7 @@ internal sealed class NextDnsEngine
             if (HasProfileSwitchJournal())
             {
                 await RecoverPendingProfileSwitchAsync(deadline.Token).ConfigureAwait(false);
-                return;
+                return true;
             }
 
             if (ReadSetting("Enabled") != "true")
@@ -393,11 +403,11 @@ internal sealed class NextDnsEngine
                 SetWanted(false);
                 if (_dns.HasSnapshot)
                     await _dns.DisableAsync(deadline.Token).ConfigureAwait(false);
-                return;
+                return true;
             }
 
             string? config = ReadSetting("Configuration");
-            if (!TryParseConfiguration(config, out string profile, out bool report, out bool router)) return;
+            if (!TryParseConfiguration(config, out string profile, out bool report, out bool router)) return true;
             await EnableAsync(new BrokerRequest
             {
                 Version = BrokerProtocol.Version,
@@ -406,8 +416,9 @@ internal sealed class NextDnsEngine
                 ReportClientInfo = report,
                 SetupRouter = router
             }, deadline.Token).ConfigureAwait(false);
+            return true;
         }
-        catch (Exception ex) { ServiceLog.Write("Reconciliación DNS: " + ex.Message); }
+        catch (Exception ex) { ServiceLog.Write("Reconciliación DNS: " + ex.Message); return false; }
         finally { _operations.Release(); }
     }
 

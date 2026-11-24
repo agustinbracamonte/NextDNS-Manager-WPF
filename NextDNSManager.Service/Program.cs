@@ -46,6 +46,7 @@ internal sealed class BrokerWindowsService : ServiceBase
     private bool _stopping;
     private bool _reconcilePending;
     private bool _reconcileRunning;
+    private int _retrySeconds = 5;
     internal BrokerWindowsService()
     {
         ServiceName = BrokerProtocol.ServiceName;
@@ -117,8 +118,19 @@ internal sealed class BrokerWindowsService : ServiceBase
                 _reconcilePending = false;
                 engine = _server.Engine;
             }
-            try { await engine.ReconcileAsync().ConfigureAwait(false); }
+            bool succeeded = false;
+            try { succeeded = await engine.ReconcileAsync().ConfigureAwait(false); }
             catch (Exception ex) { ServiceLog.Write("Reconciliación: " + ex.Message); }
+            lock (_reconcileLock)
+            {
+                if (succeeded) _retrySeconds = 5;
+                else if (!_stopping && _networkDebounce != null)
+                {
+                    try { _networkDebounce.Change(TimeSpan.FromSeconds(_retrySeconds), Timeout.InfiniteTimeSpan); }
+                    catch (ObjectDisposedException) { }
+                    _retrySeconds = ServiceStartupBackoff.NextDelaySeconds(_retrySeconds);
+                }
+            }
         }
     }
     private void NetworkChanged(object? sender, EventArgs e)
