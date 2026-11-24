@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -16,7 +17,12 @@ using NextDNSManager.Shared;
 
 namespace NextDNSModernWPF
 {
-    public class Profile { public string Name { get; set; } public string ID { get; set; } }
+    public class Profile
+    {
+        public string Name { get; set; }
+        public string ID { get; set; }
+        public override string ToString() => Name ?? string.Empty;
+    }
 
     public partial class MainWindow : Window
     {
@@ -28,12 +34,21 @@ namespace NextDNSModernWPF
 
         private bool isProtected = false;
         private bool hasBrokerStatus;
+        private bool brokerStatusUncertain;
         private bool needsDnsRestore;
         private string activeProfileId;
         private string brokerStatusError;
+        private bool suppressProfileSelectionChanged;
+        private bool brokerActionInProgress;
+        private bool profileSwitchInProgress;
+        private bool profileSwitchWorkerRunning;
+        private bool statusCheckInProgress;
+        private Profile pendingProfileSelection;
+        private Profile switchingToProfile;
         private readonly BrokerClient brokerClient = new BrokerClient();
         private readonly UpdateChecker updateChecker = new UpdateChecker();
         private DispatcherTimer updateTimer;
+        private DispatcherTimer brokerStatusRetryTimer;
         private bool updateCheckInProgress;
         private UpdateInfo availableUpdate;
         private System.Windows.Forms.NotifyIcon _notifyIcon;
@@ -46,6 +61,9 @@ namespace NextDNSModernWPF
         {
             InitializeComponent();
             PreviewKeyDown += MainWindow_PreviewKeyDown;
+            cmbProfiles.SelectionChanged += CmbProfiles_SelectionChanged;
+            brokerStatusRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            brokerStatusRetryTimer.Tick += BrokerStatusRetryTimer_Tick;
 
             try
             {
@@ -132,6 +150,8 @@ namespace NextDNSModernWPF
         protected override void OnClosed(EventArgs e)
         {
             if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
+            if (brokerStatusRetryTimer != null) { brokerStatusRetryTimer.Stop(); brokerStatusRetryTimer.Tick -= BrokerStatusRetryTimer_Tick; }
+            cmbProfiles.SelectionChanged -= CmbProfiles_SelectionChanged;
             DisposeTrayIcon();
             base.OnClosed(e);
         }
@@ -259,29 +279,31 @@ namespace NextDNSModernWPF
 
         private async void BtnAction_Click(object sender, RoutedEventArgs e)
         {
+            if (brokerActionInProgress || profileSwitchInProgress || statusCheckInProgress) return;
+            if (brokerStatusUncertain)
+            {
+                await CheckCurrentStatusAsync();
+                return;
+            }
             btnAction.IsEnabled = false;
+            brokerActionInProgress = true;
+            UpdateUI();
             try
             {
                 string operation = isProtected || needsDnsRestore ? "deactivate" : "activate";
+                Profile selectedProfile = cmbProfiles.SelectedItem as Profile;
                 string profileId = null;
 
                 if (operation == "activate")
                 {
-                    if (cmbProfiles.SelectedItem == null)
+                    if (selectedProfile == null)
                     {
                         System.Windows.MessageBox.Show("Selecciona un perfil.", "Perfil requerido", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
 
-                    string profileName = cmbProfiles.SelectedItem.ToString();
-                    profileId = profiles.FirstOrDefault(p => string.Equals(p.Name, profileName, StringComparison.Ordinal))?.ID;
-                    if (string.IsNullOrWhiteSpace(profileId))
-                    {
-                        System.Windows.MessageBox.Show("El perfil seleccionado no tiene un ID válido.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
-                        return;
-                    }
-
-                    if (!Regex.IsMatch(profileId, @"\A[0-9a-fA-F]{6}\z", RegexOptions.CultureInvariant))
+                    profileId = selectedProfile.ID;
+                    if (!IsValidProfileId(profileId))
                     {
                         System.Windows.MessageBox.Show("El ID del perfil debe tener exactamente 6 caracteres hexadecimales.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
@@ -301,32 +323,169 @@ namespace NextDNSModernWPF
                 if (response.Success)
                 {
                     ApplyBrokerStatus(response);
+                    if (operation == "activate" && (!response.Active || !string.Equals(response.ProfileId, profileId, StringComparison.OrdinalIgnoreCase)))
+                        throw new InvalidOperationException("El broker no confirmó el perfil solicitado.");
                 }
                 else
                 {
-                    brokerStatusError = string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo completar la operación." : response.Error;
-                    System.Windows.MessageBox.Show(
-                        brokerStatusError,
-                        "Fallo",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Error);
-                    await CheckCurrentStatusAsync();
+                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo completar la operación." : response.Error);
                 }
             }
             catch (Exception ex)
             {
                 brokerStatusError = ex.Message;
-                System.Windows.MessageBox.Show(ex.Message, "Broker no disponible", MessageBoxButton.OK, MessageBoxImage.Error);
+                brokerStatusUncertain = true;
+                brokerActionInProgress = false;
+                await CheckCurrentStatusAsync();
+                if (!_trayDisposed)
+                    System.Windows.MessageBox.Show(ex.Message, "No se confirmó la operación", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally
             {
-                btnAction.IsEnabled = true;
+                brokerActionInProgress = false;
                 UpdateUI();
+                if (pendingProfileSelection != null && isProtected && !brokerStatusUncertain && !needsDnsRestore)
+                    _ = ProcessPendingProfileSwitchesAsync();
             }
+        }
+
+        private void CmbProfiles_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (suppressProfileSelectionChanged) return;
+
+            Profile selected = cmbProfiles.SelectedItem as Profile;
+            if (statusCheckInProgress)
+            {
+                SelectProfileById(activeProfileId);
+                return;
+            }
+            if (brokerActionInProgress && !profileSwitchInProgress)
+            {
+                SelectProfileById(activeProfileId);
+                return;
+            }
+            if (brokerStatusUncertain)
+            {
+                SelectProfileById(activeProfileId);
+                return;
+            }
+            if (!isProtected || !hasBrokerStatus || needsDnsRestore || selected == null)
+                return;
+
+            string latestSelection = ProfileSwitchSelection.QueueLatest(
+                selected.ID,
+                activeProfileId,
+                profileSwitchInProgress ? switchingToProfile?.ID : null);
+            if (latestSelection == null)
+            {
+                pendingProfileSelection = null;
+                return;
+            }
+
+            pendingProfileSelection = selected;
+            if (!profileSwitchWorkerRunning && !brokerActionInProgress)
+                _ = ProcessPendingProfileSwitchesAsync();
+        }
+
+        private async Task ProcessPendingProfileSwitchesAsync()
+        {
+            if (profileSwitchWorkerRunning) return;
+            profileSwitchWorkerRunning = true;
+            try
+            {
+                while (pendingProfileSelection != null && !_trayDisposed)
+                {
+                    Profile target = pendingProfileSelection;
+                    pendingProfileSelection = null;
+                    if (!isProtected || !hasBrokerStatus || brokerStatusUncertain || needsDnsRestore)
+                        break;
+                    if (!IsValidProfileId(target.ID))
+                    {
+                        System.Windows.MessageBox.Show("El ID del perfil debe tener exactamente 6 caracteres hexadecimales.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        SelectProfileById(activeProfileId);
+                        continue;
+                    }
+                    if (string.Equals(target.ID, activeProfileId, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    switchingToProfile = target;
+                    profileSwitchInProgress = true;
+                    brokerActionInProgress = true;
+                    btnAction.IsEnabled = false;
+                    brokerStatusError = null;
+                    UpdateUI();
+                    Exception switchError = null;
+                    try
+                    {
+                        BrokerResponse response = await brokerClient.SendAsync(new BrokerRequest
+                        {
+                            Version = BrokerProtocol.Version,
+                            Operation = "activate",
+                            ProfileId = target.ID,
+                            ReportClientInfo = chkReportName.IsChecked == true,
+                            SetupRouter = chkSetupRouter.IsChecked == true
+                        });
+                        if (!response.Success)
+                            throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo cambiar de perfil." : response.Error);
+                        ApplyBrokerStatus(response);
+                        if (!response.Active || !string.Equals(response.ProfileId, target.ID, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidOperationException("El broker no confirmó el perfil seleccionado.");
+                    }
+                    catch (Exception ex)
+                    {
+                        switchError = ex;
+                        brokerStatusError = ex.Message;
+                        brokerStatusUncertain = true;
+                    }
+                    finally
+                    {
+                        brokerActionInProgress = false;
+                        profileSwitchInProgress = false;
+                        switchingToProfile = null;
+                    }
+
+                    if (switchError != null)
+                    {
+                        await CheckCurrentStatusAsync();
+                        if (!brokerStatusUncertain && isProtected && string.Equals(activeProfileId, target.ID, StringComparison.OrdinalIgnoreCase))
+                        {
+                            // The request may have completed even if its reply was lost.
+                            continue;
+                        }
+                        SelectProfileById(activeProfileId);
+                        if (!_trayDisposed)
+                            System.Windows.MessageBox.Show(switchError.Message, "No se confirmó el cambio de perfil", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        if (brokerStatusUncertain || !isProtected || needsDnsRestore)
+                            pendingProfileSelection = null;
+                    }
+
+                    UpdateUI();
+                }
+            }
+            finally
+            {
+                profileSwitchWorkerRunning = false;
+                profileSwitchInProgress = false;
+                brokerActionInProgress = false;
+                switchingToProfile = null;
+                btnAction.IsEnabled = hasBrokerStatus;
+                UpdateUI();
+                if (pendingProfileSelection != null && isProtected && !brokerStatusUncertain && !needsDnsRestore)
+                    _ = ProcessPendingProfileSwitchesAsync();
+            }
+        }
+
+        private async void BrokerStatusRetryTimer_Tick(object sender, EventArgs e)
+        {
+            if (!brokerStatusUncertain || brokerActionInProgress || profileSwitchInProgress) return;
+            await CheckCurrentStatusAsync();
         }
 
         internal async Task CheckCurrentStatusAsync(bool enableActionWhenComplete = false)
         {
+            if (statusCheckInProgress || brokerActionInProgress || profileSwitchInProgress) return;
+            statusCheckInProgress = true;
+            UpdateUI();
             try
             {
                 BrokerResponse response = await brokerClient.SendAsync(new BrokerRequest
@@ -338,10 +497,13 @@ namespace NextDNSModernWPF
                 if (response.Success)
                 {
                     ApplyBrokerStatus(response);
+                    brokerStatusUncertain = false;
+                    brokerStatusRetryTimer?.Stop();
                 }
                 else
                 {
                     brokerStatusError = string.IsNullOrWhiteSpace(response.Error) ? "No se pudo consultar el estado del broker." : response.Error;
+                    brokerStatusUncertain = true;
                 }
             }
             catch (Exception ex)
@@ -349,10 +511,14 @@ namespace NextDNSModernWPF
                 // A failed status request is not evidence that protection is off.
                 // Preserve the last confirmed state; on first launch keep status unknown.
                 brokerStatusError = ex.Message;
+                brokerStatusUncertain = true;
             }
+            finally { statusCheckInProgress = false; }
+            if (brokerStatusUncertain)
+                brokerStatusRetryTimer?.Start();
             UpdateUI();
             if (enableActionWhenComplete)
-                btnAction.IsEnabled = true;
+                btnAction.IsEnabled = !brokerStatusUncertain;
         }
 
         private void ApplyBrokerStatus(BrokerResponse response)
@@ -367,16 +533,24 @@ namespace NextDNSModernWPF
             activeProfileId = response.ProfileId;
             hasBrokerStatus = true;
             brokerStatusError = null;
+            brokerStatusUncertain = false;
+            if (response.Active)
+                SelectProfileById(activeProfileId);
             UpdateUI();
         }
 
         private void UpdateUI()
         {
+            cmbProfiles.IsEnabled = !statusCheckInProgress && (!brokerActionInProgress || profileSwitchInProgress);
+            btnAction.IsEnabled = !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (needsDnsRestore)
             {
                 lblStatus.Text = "REQUIERE ATENCIÓN";
                 lblStatus.Foreground = new SolidColorBrush(System.Windows.Media.Colors.Orange);
-                lblInfo.Text = "Hay una configuración DNS pendiente de restaurar.";
+                string priorProfile = string.IsNullOrWhiteSpace(activeProfileId)
+                    ? string.Empty
+                    : $" Perfil anterior: {GetProfileDisplayName(activeProfileId)}.";
+                lblInfo.Text = "La protección requiere recuperación o hay una configuración DNS pendiente." + priorProfile;
                 btnAction.Content = "RESTABLECER DNS";
                 return;
             }
@@ -395,6 +569,12 @@ namespace NextDNSModernWPF
             {
                 lblStatus.Text = "PROTEGIDO";
                 lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#40A745"));
+                if (profileSwitchInProgress)
+                {
+                    lblInfo.Text = $"Cambiando al perfil: {switchingToProfile?.Name ?? "seleccionado"}...";
+                    btnAction.Content = "CAMBIANDO PERFIL";
+                    return;
+                }
                 string profileLabel = string.IsNullOrWhiteSpace(activeProfileId)
                     ? "Perfil activo: no informado"
                     : $"Perfil activo: {GetProfileDisplayName(activeProfileId)}";
@@ -428,8 +608,12 @@ namespace NextDNSModernWPF
         {
             if (!string.IsNullOrWhiteSpace(txtName.Text) && !string.IsNullOrWhiteSpace(txtID.Text))
             {
-                profiles.Add(new Profile { Name = txtName.Text, ID = txtID.Text });
-                SaveProfiles(); RefreshCombo(); cmbProfiles.SelectedItem = txtName.Text; txtName.Clear(); txtID.Clear();
+                Profile profile = new Profile { Name = txtName.Text.Trim(), ID = txtID.Text.Trim() };
+                profiles.Add(profile);
+                SaveProfiles();
+                RefreshCombo();
+                cmbProfiles.SelectedItem = profile;
+                txtName.Clear(); txtID.Clear();
             }
         }
 
@@ -437,22 +621,53 @@ namespace NextDNSModernWPF
         {
             if (cmbProfiles.SelectedItem != null)
             {
-                var item = cmbProfiles.SelectedItem.ToString(); profiles.RemoveAll(p => p.Name == item); SaveProfiles(); RefreshCombo();
+                Profile selected = cmbProfiles.SelectedItem as Profile;
+                profiles.Remove(selected);
+                SaveProfiles();
+                RefreshCombo();
             }
         }
 
         private void LoadProfiles()
         {
-            if (File.Exists(profilesFile)) { try { string json = File.ReadAllText(profilesFile); profiles = JsonSerializer.Deserialize<List<Profile>>(json); RefreshCombo(); } catch { profiles = new List<Profile>(); } }
+            if (File.Exists(profilesFile))
+            {
+                try { profiles = JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(profilesFile)) ?? new List<Profile>(); }
+                catch { profiles = new List<Profile>(); }
+            }
+            RefreshCombo();
         }
 
         private void SaveProfiles() { string json = JsonSerializer.Serialize(profiles); File.WriteAllText(profilesFile, json); }
 
         private void RefreshCombo()
         {
-            cmbProfiles.Items.Clear(); foreach (var p in profiles) cmbProfiles.Items.Add(p.Name);
-            if (cmbProfiles.Items.Count > 0) cmbProfiles.SelectedIndex = 0;
+            Profile previousSelection = cmbProfiles.SelectedItem as Profile;
+            suppressProfileSelectionChanged = true;
+            try
+            {
+                cmbProfiles.ItemsSource = null;
+                cmbProfiles.ItemsSource = profiles;
+                if (isProtected)
+                    cmbProfiles.SelectedItem = profiles.FirstOrDefault(profile => string.Equals(profile.ID, activeProfileId, StringComparison.OrdinalIgnoreCase));
+                else
+                    cmbProfiles.SelectedItem = profiles.FirstOrDefault(profile => previousSelection != null && string.Equals(profile.ID, previousSelection.ID, StringComparison.OrdinalIgnoreCase))
+                        ?? profiles.FirstOrDefault();
+            }
+            finally { suppressProfileSelectionChanged = false; }
         }
+
+        private void SelectProfileById(string profileId, bool clearIfMissing = true)
+        {
+            if (string.IsNullOrWhiteSpace(profileId) && !clearIfMissing) return;
+            Profile profile = profiles.FirstOrDefault(candidate => string.Equals(candidate.ID, profileId, StringComparison.OrdinalIgnoreCase));
+            suppressProfileSelectionChanged = true;
+            try { cmbProfiles.SelectedItem = profile; }
+            finally { suppressProfileSelectionChanged = false; }
+        }
+
+        private static bool IsValidProfileId(string profileId) =>
+            !string.IsNullOrWhiteSpace(profileId) && Regex.IsMatch(profileId, @"\A[0-9a-fA-F]{6}\z", RegexOptions.CultureInvariant);
 
         private void BtnMinimize_Click(object sender, RoutedEventArgs e) { this.WindowState = WindowState.Minimized; }
         private void BtnClose_Click(object sender, RoutedEventArgs e) { this.Close(); }
