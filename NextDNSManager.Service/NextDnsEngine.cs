@@ -133,8 +133,8 @@ internal sealed class NextDnsEngine
         catch
         {
             using var restoreDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            await _dns.DisableAsync(restoreDeadline.Token).ConfigureAwait(false);
-            SetWanted(wantedBefore);
+            try { await _dns.DisableAsync(restoreDeadline.Token).ConfigureAwait(false); }
+            finally { SetWanted(wantedBefore); }
             throw;
         }
     }
