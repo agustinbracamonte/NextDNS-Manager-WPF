@@ -1,4 +1,4 @@
-﻿<Window x:Class="NextDNSModernWPF.MainWindow"
+<Window x:Class="NextDNSModernWPF.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="NextDNS Manager" Height="680" Width="420"
@@ -18,18 +18,9 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
-        <SolidColorBrush x:Key="BgColor" Color="#121212"/>
-        <SolidColorBrush x:Key="CardColor" Color="#1E1E1E"/>
-        <SolidColorBrush x:Key="NextBlue" Color="#2F80ED"/>
-        <SolidColorBrush x:Key="NextRed" Color="#D32F2F"/>
-        <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="TextSecondary" Color="#A0A0A0"/>
-        <SolidColorBrush x:Key="BorderColor" Color="#333333"/>
-        <SolidColorBrush x:Key="FocusBorderColor" Color="#2F80ED"/>
-
         <Style x:Key="WindowBtnStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#A0A0A0"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Width" Value="46"/>
@@ -43,14 +34,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#333333"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource WindowButtonHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource WindowButtonHoverForeground}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#454545"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource WindowButtonPressed}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -68,14 +59,14 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#E81123"/>
-                                <Setter Property="Foreground" Value="White"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource CloseButtonHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource CloseButtonHoverForeground}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#B50C19"/>
+                                <Setter TargetName="border" Property="Background" Value="{DynamicResource CloseButtonPressed}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -86,8 +77,8 @@
 
         <Style TargetType="ComboBoxItem" x:Key="DarkItemStyle">
             <Setter Property="SnapsToDevicePixels" Value="True"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="Background" Value="{DynamicResource CardColor}"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Padding" Value="10,8"/>
             <Setter Property="Template">
@@ -98,13 +89,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NextBlue}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource NextBlue}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{StaticResource NextBlue}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource NextBlue}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="#245FAE"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource ComboKeyboardFocus}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -118,8 +109,8 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="30" />
                 </Grid.ColumnDefinitions>
-                <Border x:Name="Border" Grid.ColumnSpan="2" CornerRadius="10" Background="#1E1E1E" BorderThickness="1" BorderBrush="{StaticResource BorderColor}" />
-                <Path Grid.Column="1" Fill="White" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M0,0 L10,0 L5,6 z" IsHitTestVisible="False"/>
+                <Border x:Name="Border" Grid.ColumnSpan="2" CornerRadius="10" Background="{DynamicResource CardColor}" BorderThickness="1" BorderBrush="{DynamicResource BorderColor}" />
+                <Path Grid.Column="1" Fill="{DynamicResource TextPrimary}" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M0,0 L10,0 L5,6 z" IsHitTestVisible="False"/>
                 <ContentPresenter Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="15,0,0,0" VerticalAlignment="Center" HorizontalAlignment="Left" />
                 <ToggleButton Name="ToggleButton" Grid.ColumnSpan="2" Focusable="false" Background="Transparent" BorderThickness="0" IsChecked="{Binding Path=IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}" ClickMode="Press">
                     <ToggleButton.Template>
@@ -130,23 +121,23 @@
                 </ToggleButton>
                 <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
                     <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                        <Border x:Name="DropDownBorder" Background="#1E1E1E" BorderThickness="1" BorderBrush="#333333" CornerRadius="5"/>
+                        <Border x:Name="DropDownBorder" Background="{DynamicResource CardColor}" BorderThickness="1" BorderBrush="{DynamicResource BorderColor}" CornerRadius="5"/>
                         <ScrollViewer Margin="1" SnapsToDevicePixels="True">
-                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" Background="#1E1E1E"/>
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" Background="{DynamicResource CardColor}"/>
                         </ScrollViewer>
                     </Grid>
                 </Popup>
             </Grid>
             <ControlTemplate.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="Border" Property="BorderBrush" Value="#596473"/>
+                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource ComboHoverBorder}"/>
                 </Trigger>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                    <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                     <Setter TargetName="Border" Property="BorderThickness" Value="1"/>
                 </Trigger>
                 <Trigger Property="IsDropDownOpen" Value="True">
-                    <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                    <Setter TargetName="Border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                 </Trigger>
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter TargetName="Border" Property="Opacity" Value="0.55"/>
@@ -157,15 +148,15 @@
         <Style TargetType="ComboBox">
             <Setter Property="Template" Value="{StaticResource DarkComboBoxTemplate}"/>
             <Setter Property="ItemContainerStyle" Value="{StaticResource DarkItemStyle}"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
         </Style>
 
         <Style TargetType="Button" x:Key="RoundedBtn">
-            <Setter Property="Background" Value="{StaticResource NextBlue}"/>
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="{DynamicResource NextBlue}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ActionButtonForeground}"/>
             <Setter Property="FontSize" Value="15"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -185,7 +176,7 @@
                                 <Setter TargetName="border" Property="Opacity" Value="0.72"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -198,8 +189,8 @@
         </Style>
 
         <Style x:Key="UpdateBtnStyle" TargetType="Button">
-            <Setter Property="Background" Value="#202C3A"/>
-            <Setter Property="Foreground" Value="#B9D8FF"/>
+            <Setter Property="Background" Value="{DynamicResource UpdateBackground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource UpdateForeground}"/>
             <Setter Property="BorderBrush" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="FontSize" Value="12"/>
@@ -213,13 +204,13 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="updateBorder" Property="Background" Value="#293C52"/>
+                                <Setter TargetName="updateBorder" Property="Background" Value="{DynamicResource UpdateHoverBackground}"/>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="updateBorder" Property="Background" Value="#26384D"/>
+                                <Setter TargetName="updateBorder" Property="Background" Value="{DynamicResource UpdatePressedBackground}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="updateBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="updateBorder" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="updateBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -232,14 +223,14 @@
         </Style>
 
         <Style TargetType="CheckBox" x:Key="ModernCheck">
-            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
                         <StackPanel Orientation="Horizontal">
-                            <Border x:Name="border" Width="20" Height="20" CornerRadius="4" BorderThickness="1" BorderBrush="{StaticResource NextBlue}" Background="Transparent" Margin="0,0,10,0">
-                                <Path x:Name="checkMark" Data="M 2,10 L 8,16 L 18,4" Stroke="{StaticResource NextBlue}" StrokeThickness="2" Visibility="Collapsed"/>
+                            <Border x:Name="border" Width="20" Height="20" CornerRadius="4" BorderThickness="1" BorderBrush="{DynamicResource NextBlue}" Background="Transparent" Margin="0,0,10,0">
+                                <Path x:Name="checkMark" Data="M 2,10 L 8,16 L 18,4" Stroke="{DynamicResource NextBlue}" StrokeThickness="2" Visibility="Collapsed"/>
                             </Border>
                             <ContentPresenter VerticalAlignment="Center"/>
                         </StackPanel>
@@ -249,10 +240,10 @@
                                 <Setter TargetName="border" Property="Background" Value="Transparent"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="border" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="border" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="border" Property="BorderThickness" Value="1"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
@@ -262,9 +253,9 @@
         </Style>
 
         <Style TargetType="TextBox">
-            <Setter Property="Background" Value="#2C2C2C"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+            <Setter Property="Background" Value="{DynamicResource InputColor}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="10"/>
             <Setter Property="FontSize" Value="13"/>
@@ -276,7 +267,7 @@
                             <Grid>
                                 <ScrollViewer x:Name="PART_ContentHost" Margin="0" VerticalAlignment="Center"/>
                                 <TextBlock x:Name="Watermark" Text="{TemplateBinding Tag}" VerticalAlignment="Center" Margin="11,0,0,0"
-                                           Foreground="#B8C0CA" IsHitTestVisible="False" Visibility="Collapsed"/>
+                                           Foreground="{DynamicResource InputPlaceholder}" IsHitTestVisible="False" Visibility="Collapsed"/>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -284,11 +275,11 @@
                                 <Setter TargetName="Watermark" Property="Visibility" Value="Visible"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="#555555"/>
+                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="{DynamicResource InputHoverBorder}"/>
                                 <Setter TargetName="InputBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                <Setter TargetName="InputBorder" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                 <Setter TargetName="InputBorder" Property="BorderThickness" Value="1"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
@@ -301,9 +292,9 @@
         </Style>
 
         <Style TargetType="GroupBox">
-            <Setter Property="BorderBrush" Value="{StaticResource BorderColor}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="GroupBox">
@@ -325,31 +316,37 @@
         </Style>
     </Window.Resources>
 
-    <Border Background="#F8121212" CornerRadius="10" BorderBrush="#333333" BorderThickness="1">
+    <Border Background="{DynamicResource WindowSurface}" CornerRadius="10" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1">
         <Grid>
             <Border Padding="30" Margin="0,15,0,0">
                 <StackPanel>
-                    <TextBlock Text="NextDNS" FontSize="32" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" Margin="0,0,0,5"/>
-                    <TextBlock Text="Made By MontFort" FontSize="12" Foreground="{StaticResource NextBlue}" Margin="0,0,0,5"/>
+                    <Grid Height="38" Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="120"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="NextDNS" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                        <ComboBox x:Name="cmbTheme" Grid.Column="1" Height="30" VerticalAlignment="Center" FontSize="12" ToolTip="Apariencia de la aplicación">
+                            <ComboBoxItem Content="Automático" Tag="System"/>
+                            <ComboBoxItem Content="Claro" Tag="Light"/>
+                            <ComboBoxItem Content="Oscuro" Tag="Dark"/>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Text="Made By MontFort" FontSize="12" Foreground="{DynamicResource NextBlue}" Margin="0,0,0,5"/>
 
                     <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,18" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
 
-                    <Border Background="{StaticResource CardColor}" CornerRadius="15" Padding="20" Margin="0,0,0,20">
+                    <Border Background="{DynamicResource CardColor}" CornerRadius="15" Padding="20" Margin="0,0,0,20">
                         <StackPanel>
-                            <TextBlock x:Name="lblStatus" Text="DESCONOCIDO" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                            <TextBlock x:Name="lblInfo" Text="Verificando servicio..." FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0" TextWrapping="Wrap"/>
+                            <TextBlock x:Name="lblStatus" Text="DESCONOCIDO" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}"/>
+                            <TextBlock x:Name="lblInfo" Text="Verificando servicio..." FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="0,5,0,0" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 
-                    <TextBlock Text="PERFIL A UTILIZAR" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Margin="5,0,0,5"/>
+                    <TextBlock Text="PERFIL A UTILIZAR" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}" Margin="5,0,0,5"/>
 
-                    <Border CornerRadius="10" Background="{StaticResource CardColor}" Height="45" Margin="0,0,0,16">
-                        <ComboBox x:Name="cmbProfiles" BorderThickness="0" Background="Transparent" Foreground="White" VerticalContentAlignment="Center" Padding="10,0" FontSize="14">
-                            <ComboBox.Resources>
-                                <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#1E1E1E" />
-                                <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}" Color="#1E1E1E" />
-                            </ComboBox.Resources>
-                        </ComboBox>
+                    <Border CornerRadius="10" Background="{DynamicResource CardColor}" Height="45" Margin="0,0,0,16">
+                        <ComboBox x:Name="cmbProfiles" BorderThickness="0" Background="Transparent" Foreground="{DynamicResource TextPrimary}" VerticalContentAlignment="Center" Padding="10,0" FontSize="14"/>
                     </Border>
 
                     <CheckBox x:Name="chkReportName" Content="Reportar nombre de dispositivo" Style="{StaticResource ModernCheck}" IsChecked="True" Margin="5,0,0,8"/>
@@ -371,11 +368,11 @@
                                 <TextBox x:Name="txtName" Grid.Column="0" Tag="Nombre"/>
                                 <TextBox x:Name="txtID" Grid.Column="2" Tag="ID"/>
 
-                                <Button Grid.Column="4" Content="Guardar" Width="80" Height="38" Click="BtnAdd_Click">
+                            <Button Grid.Column="4" Content="Guardar" Width="80" Height="38" Click="BtnAdd_Click">
                                     <Button.Template>
                                         <ControlTemplate TargetType="Button">
-                                            <Border x:Name="bdr" CornerRadius="5" Background="{StaticResource NextBlue}" BorderBrush="Transparent" BorderThickness="0">
-                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="White" TextElement.FontWeight="Bold"/>
+                                            <Border x:Name="bdr" CornerRadius="5" Background="{DynamicResource NextBlue}" BorderBrush="Transparent" BorderThickness="0">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="{DynamicResource ActionButtonForeground}" TextElement.FontWeight="Bold"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
@@ -385,7 +382,7 @@
                                                     <Setter TargetName="bdr" Property="Opacity" Value="0.72"/>
                                                 </Trigger>
                                                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                                    <Setter TargetName="bdr" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                                    <Setter TargetName="bdr" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                                     <Setter TargetName="bdr" Property="BorderThickness" Value="1"/>
                                                 </Trigger>
                                             </ControlTemplate.Triggers>
@@ -394,7 +391,7 @@
                                 </Button>
                             </Grid>
 
-                            <Button Content="Eliminar seleccionado" Height="30" Background="Transparent" Foreground="{StaticResource NextRed}" Click="BtnDel_Click" Cursor="Hand">
+                            <Button Content="Eliminar seleccionado" Height="30" Background="Transparent" Foreground="{DynamicResource NextRed}" Click="BtnDel_Click" Cursor="Hand">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Border x:Name="deleteBorder" Background="Transparent" BorderBrush="Transparent" BorderThickness="0" CornerRadius="4">
@@ -402,13 +399,13 @@
                                         </Border>
                                         <ControlTemplate.Triggers>
                                             <Trigger Property="IsMouseOver" Value="True">
-                                                <Setter Property="Foreground" Value="#F0626D"/>
+                                                <Setter Property="Foreground" Value="{DynamicResource DeleteHoverForeground}"/>
                                             </Trigger>
                                             <Trigger Property="IsPressed" Value="True">
                                                 <Setter TargetName="deleteBorder" Property="Opacity" Value="0.75"/>
                                             </Trigger>
                                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                                <Setter TargetName="deleteBorder" Property="BorderBrush" Value="{StaticResource FocusBorderColor}"/>
+                                                <Setter TargetName="deleteBorder" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
                                                 <Setter TargetName="deleteBorder" Property="BorderThickness" Value="1"/>
                                             </Trigger>
                                         </ControlTemplate.Triggers>

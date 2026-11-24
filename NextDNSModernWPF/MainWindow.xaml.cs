@@ -53,13 +53,23 @@ namespace NextDNSModernWPF
         private UpdateInfo availableUpdate;
         private System.Windows.Forms.NotifyIcon _notifyIcon;
         private System.Windows.Forms.ContextMenuStrip _trayContextMenu;
+        private System.Windows.Forms.ToolStripMenuItem _trayStatusMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayEnableMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayDisableMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayRefreshStatusMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayCheckUpdatesMenuItem;
         private System.Drawing.Icon _trayIcon;
         private bool _allowClose;
         private bool _trayDisposed;
 
         public MainWindow()
         {
+            ThemeManager.Initialize(System.Windows.Application.Current);
             InitializeComponent();
+            cmbTheme.SelectionChanged += CmbTheme_SelectionChanged;
+            ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
+            SyncThemeSelection();
+            lblInfo.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             PreviewKeyDown += MainWindow_PreviewKeyDown;
             cmbProfiles.SelectionChanged += CmbProfiles_SelectionChanged;
             brokerStatusRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
@@ -84,6 +94,7 @@ namespace NextDNSModernWPF
             }
             catch
             {
+                DetachThemeEvents();
                 DisposeTrayIcon();
                 throw;
             }
@@ -112,8 +123,25 @@ namespace NextDNSModernWPF
                 notifyIcon.DoubleClick += NotifyIcon_DoubleClick;
                 notifyIcon.BalloonTipClicked += NotifyIcon_BalloonTipClicked;
 
+                _trayStatusMenuItem = new System.Windows.Forms.ToolStripMenuItem { Enabled = false };
+                _trayEnableMenuItem = new System.Windows.Forms.ToolStripMenuItem("Activar NextDNS", null,
+                    async (s, e) => await PerformActionAsync("activate"));
+                _trayDisableMenuItem = new System.Windows.Forms.ToolStripMenuItem("Desactivar NextDNS", null,
+                    async (s, e) => await PerformActionAsync("deactivate"));
+                _trayRefreshStatusMenuItem = new System.Windows.Forms.ToolStripMenuItem("Actualizar estado", null,
+                    async (s, e) => await CheckCurrentStatusAsync());
+                _trayCheckUpdatesMenuItem = new System.Windows.Forms.ToolStripMenuItem("Buscar actualizaciones", null,
+                    async (s, e) => await CheckForUpdatesAsync(true));
+                contextMenu.Opening += TrayContextMenu_Opening;
+                contextMenu.Items.Add(_trayStatusMenuItem);
+                contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+                contextMenu.Items.Add(_trayEnableMenuItem);
+                contextMenu.Items.Add(_trayDisableMenuItem);
+                contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+                contextMenu.Items.Add(_trayRefreshStatusMenuItem);
+                contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
                 contextMenu.Items.Add("Abrir", null, (s, e) => RestoreFromTray());
-                contextMenu.Items.Add("Buscar actualizaciones", null, async (s, e) => await CheckForUpdatesAsync(true));
+                contextMenu.Items.Add(_trayCheckUpdatesMenuItem);
                 contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
                 contextMenu.Items.Add("Salir (Ctrl+Q)", null, (s, e) => ExitApplication());
                 notifyIcon.ContextMenuStrip = contextMenu;
@@ -151,9 +179,43 @@ namespace NextDNSModernWPF
         {
             if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
             if (brokerStatusRetryTimer != null) { brokerStatusRetryTimer.Stop(); brokerStatusRetryTimer.Tick -= BrokerStatusRetryTimer_Tick; }
+            DetachThemeEvents();
             cmbProfiles.SelectionChanged -= CmbProfiles_SelectionChanged;
             DisposeTrayIcon();
             base.OnClosed(e);
+        }
+
+        private void CmbTheme_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (cmbTheme.SelectedItem is not ComboBoxItem selectedItem ||
+                !Enum.TryParse(selectedItem.Tag?.ToString(), ignoreCase: true, out ThemePreference preference))
+                return;
+
+            if (preference != ThemeManager.Preference)
+                ThemeManager.SetPreference(preference);
+        }
+
+        private void ThemeManager_ThemeChanged(object sender, EventArgs e)
+        {
+            SyncThemeSelection();
+            UpdateUI();
+        }
+
+        private void SyncThemeSelection()
+        {
+            if (cmbTheme == null) return;
+
+            string preference = ThemeManager.Preference.ToString();
+            ComboBoxItem selectedItem = cmbTheme.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), preference, StringComparison.OrdinalIgnoreCase));
+            if (selectedItem != null && cmbTheme.SelectedItem != selectedItem)
+                cmbTheme.SelectedItem = selectedItem;
+        }
+
+        private void DetachThemeEvents()
+        {
+            cmbTheme.SelectionChanged -= CmbTheme_SelectionChanged;
+            ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
         }
 
         internal void RestoreFromTray()
@@ -218,9 +280,15 @@ namespace NextDNSModernWPF
             try { if (notifyIcon != null) notifyIcon.DoubleClick -= NotifyIcon_DoubleClick; } catch { }
             try { if (notifyIcon != null) notifyIcon.BalloonTipClicked -= NotifyIcon_BalloonTipClicked; } catch { }
             try { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; } catch { }
+            try { if (contextMenu != null) contextMenu.Opening -= TrayContextMenu_Opening; } catch { }
             try { notifyIcon?.Dispose(); } catch { }
             try { contextMenu?.Dispose(); } catch { }
             try { trayIcon?.Dispose(); } catch { }
+        }
+
+        private void TrayContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            UpdateTrayMenuState();
         }
 
         private async void UpdateTimer_Tick(object sender, EventArgs e) => await CheckForUpdatesAsync(false);
@@ -277,7 +345,9 @@ namespace NextDNSModernWPF
             }
         }
 
-        private async void BtnAction_Click(object sender, RoutedEventArgs e)
+        private async void BtnAction_Click(object sender, RoutedEventArgs e) => await PerformActionAsync();
+
+        private async Task PerformActionAsync(string requestedOperation = null)
         {
             if (brokerActionInProgress || profileSwitchInProgress || statusCheckInProgress) return;
             if (brokerStatusUncertain)
@@ -285,12 +355,14 @@ namespace NextDNSModernWPF
                 await CheckCurrentStatusAsync();
                 return;
             }
+            if (requestedOperation == "activate" && isProtected && !needsDnsRestore) return;
+            if (requestedOperation == "deactivate" && !isProtected && !needsDnsRestore) return;
             btnAction.IsEnabled = false;
             brokerActionInProgress = true;
             UpdateUI();
             try
             {
-                string operation = isProtected || needsDnsRestore ? "deactivate" : "activate";
+                string operation = requestedOperation ?? (isProtected || needsDnsRestore ? "deactivate" : "activate");
                 Profile selectedProfile = cmbProfiles.SelectedItem as Profile;
                 string profileId = null;
 
@@ -541,34 +613,35 @@ namespace NextDNSModernWPF
 
         private void UpdateUI()
         {
+            UpdateTrayMenuState();
             cmbProfiles.IsEnabled = !statusCheckInProgress && (!brokerActionInProgress || profileSwitchInProgress);
             btnAction.IsEnabled = !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (needsDnsRestore)
             {
                 lblStatus.Text = "REQUIERE ATENCIÓN";
-                lblStatus.Foreground = new SolidColorBrush(System.Windows.Media.Colors.Orange);
+                lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusAttention");
                 string priorProfile = string.IsNullOrWhiteSpace(activeProfileId)
                     ? string.Empty
                     : $" Perfil anterior: {GetProfileDisplayName(activeProfileId)}.";
                 lblInfo.Text = "La protección requiere recuperación o hay una configuración DNS pendiente." + priorProfile;
                 btnAction.Content = "RESTABLECER DNS";
+                SetActionButtonTheme("NextBlue", "ActionButtonForeground");
                 return;
             }
             if (!hasBrokerStatus)
             {
                 lblStatus.Text = "ESTADO DESCONOCIDO";
-                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#A0A0A0"));
+                lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
                 lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError) ? "Verificando servicio..." : brokerStatusError;
                 btnAction.Content = "ACTIVAR";
-                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2F80ED"));
-                btnAction.Foreground = System.Windows.Media.Brushes.White;
+                SetActionButtonTheme("NextBlue", "ActionButtonForeground");
                 return;
             }
 
             if (isProtected)
             {
                 lblStatus.Text = "PROTEGIDO";
-                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#40A745"));
+                lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusProtected");
                 if (profileSwitchInProgress)
                 {
                     lblInfo.Text = $"Cambiando al perfil: {switchingToProfile?.Name ?? "seleccionado"}...";
@@ -582,20 +655,63 @@ namespace NextDNSModernWPF
                     ? profileLabel
                     : profileLabel + Environment.NewLine + brokerStatusError;
                 btnAction.Content = "DESACTIVAR";
-                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#1E1E1E"));
-                btnAction.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#D32F2F"));
+                SetActionButtonTheme("ActionButtonDestructiveBackground", "ActionButtonDestructiveForeground");
             }
             else
             {
                 lblStatus.Text = "DESPROTEGIDO";
-                lblStatus.Foreground = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#A0A0A0"));
+                lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
                 lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError)
                     ? "NextDNS Manager no está activo"
                     : "NextDNS Manager no está activo" + Environment.NewLine + brokerStatusError;
                 btnAction.Content = "ACTIVAR";
-                btnAction.Background = new SolidColorBrush((System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString("#2F80ED"));
-                btnAction.Foreground = System.Windows.Media.Brushes.White;
+                SetActionButtonTheme("NextBlue", "ActionButtonForeground");
             }
+        }
+
+        private void SetActionButtonTheme(string backgroundResource, string foregroundResource)
+        {
+            btnAction.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, backgroundResource);
+            btnAction.SetResourceReference(System.Windows.Controls.Control.ForegroundProperty, foregroundResource);
+        }
+
+        private void UpdateTrayMenuState()
+        {
+            if (_trayDisposed || _trayStatusMenuItem == null) return;
+
+            string confirmedState = !hasBrokerStatus
+                ? "desconocido"
+                : needsDnsRestore
+                    ? "requiere restauración DNS"
+                    : isProtected
+                        ? $"activo · {GetProfileDisplayName(activeProfileId ?? string.Empty)}"
+                        : "inactivo";
+            if (brokerStatusUncertain)
+                _trayStatusMenuItem.Text = hasBrokerStatus
+                    ? $"Estado sin confirmar (último: {confirmedState})"
+                    : "Estado sin confirmar";
+            else if (statusCheckInProgress)
+                _trayStatusMenuItem.Text = $"Consultando estado (último: {confirmedState})";
+            else if (profileSwitchInProgress)
+                _trayStatusMenuItem.Text = $"Cambiando perfil a {switchingToProfile?.Name ?? "seleccionado"}…";
+            else if (brokerActionInProgress)
+                _trayStatusMenuItem.Text = "Operación de NextDNS en curso…";
+            else
+                _trayStatusMenuItem.Text = $"Estado: {confirmedState}";
+
+            bool canRunAction = hasBrokerStatus && !brokerStatusUncertain &&
+                !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
+            if (_trayEnableMenuItem != null)
+                _trayEnableMenuItem.Enabled = canRunAction && !isProtected && !needsDnsRestore;
+            if (_trayDisableMenuItem != null)
+            {
+                _trayDisableMenuItem.Text = needsDnsRestore ? "Restablecer DNS" : "Desactivar NextDNS";
+                _trayDisableMenuItem.Enabled = canRunAction && (isProtected || needsDnsRestore);
+            }
+            if (_trayRefreshStatusMenuItem != null)
+                _trayRefreshStatusMenuItem.Enabled = !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
+            if (_trayCheckUpdatesMenuItem != null)
+                _trayCheckUpdatesMenuItem.Enabled = !updateCheckInProgress;
         }
 
         private string GetProfileDisplayName(string profileId)
