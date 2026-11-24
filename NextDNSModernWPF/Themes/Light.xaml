@@ -18,6 +18,10 @@
     <SolidColorBrush x:Key="CloseButtonHoverForeground" Color="#FFFFFFFF"/>
 
     <SolidColorBrush x:Key="ComboKeyboardFocus" Color="#FF17549D"/>
+    <SolidColorBrush x:Key="ComboItemSelected" Color="#FFE0ECFA"/>
+    <SolidColorBrush x:Key="ComboItemHover" Color="#FFEDF3FA"/>
+    <SolidColorBrush x:Key="ComboItemSelectedForeground" Color="#FF1B1F24"/>
+    <SolidColorBrush x:Key="ComboItemHoverForeground" Color="#FF1B1F24"/>
     <SolidColorBrush x:Key="ComboHoverBorder" Color="#FFA6B4C4"/>
     <SolidColorBrush x:Key="InputColor" Color="#FFFFFFFF"/>
     <SolidColorBrush x:Key="InputPlaceholder" Color="#FF697586"/>

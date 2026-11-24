@@ -84,18 +84,17 @@
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderThickness="0" Padding="{TemplateBinding Padding}">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" BorderThickness="0" CornerRadius="6" Margin="2,1" Padding="{TemplateBinding Padding}">
                             <ContentPresenter VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource NextBlue}"/>
-                            </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource NextBlue}"/>
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource ComboItemSelected}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ComboItemSelectedForeground}"/>
                             </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource ComboKeyboardFocus}"/>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="{DynamicResource ComboItemHover}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource ComboItemHoverForeground}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -120,10 +119,10 @@
                     </ToggleButton.Template>
                 </ToggleButton>
                 <Popup Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
-                    <Grid Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
-                        <Border x:Name="DropDownBorder" Background="{DynamicResource CardColor}" BorderThickness="1" BorderBrush="{DynamicResource BorderColor}" CornerRadius="5"/>
-                        <ScrollViewer Margin="1" SnapsToDevicePixels="True">
-                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" Background="{DynamicResource CardColor}"/>
+                    <Grid Name="DropDown" Margin="0,4,0,0" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                        <Border x:Name="DropDownBorder" Background="{DynamicResource CardColor}" BorderThickness="1" BorderBrush="{DynamicResource BorderColor}" CornerRadius="10"/>
+                        <ScrollViewer Margin="3" SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained" Background="Transparent"/>
                         </ScrollViewer>
                     </Grid>
                 </Popup>
@@ -327,9 +326,9 @@
                         </Grid.ColumnDefinitions>
                         <TextBlock Text="NextDNS" FontSize="32" FontWeight="Bold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                         <ComboBox x:Name="cmbTheme" Grid.Column="1" Height="30" VerticalAlignment="Center" FontSize="12" ToolTip="Apariencia de la aplicación">
-                            <ComboBoxItem Content="Automático" Tag="System"/>
-                            <ComboBoxItem Content="Claro" Tag="Light"/>
-                            <ComboBoxItem Content="Oscuro" Tag="Dark"/>
+                            <ComboBoxItem Content="Automático" Tag="System" Style="{StaticResource DarkItemStyle}"/>
+                            <ComboBoxItem Content="Claro" Tag="Light" Style="{StaticResource DarkItemStyle}"/>
+                            <ComboBoxItem Content="Oscuro" Tag="Dark" Style="{StaticResource DarkItemStyle}"/>
                         </ComboBox>
                     </Grid>
                     <TextBlock Text="Made By MontFort" FontSize="12" Foreground="{DynamicResource NextBlue}" Margin="0,0,0,5"/>
