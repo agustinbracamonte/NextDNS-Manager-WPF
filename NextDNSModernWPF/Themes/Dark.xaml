@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="CardColorValue">#FF1E1E1E</Color>
+    <SolidColorBrush x:Key="WindowSurface" Color="#F8121212"/>
+    <SolidColorBrush x:Key="CardColor" Color="{StaticResource CardColorValue}"/>
+    <SolidColorBrush x:Key="NextBlue" Color="#FF2F80ED"/>
+    <SolidColorBrush x:Key="NextRed" Color="#FFD32F2F"/>
+    <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="TextSecondary" Color="#FFA0A0A0"/>
+    <SolidColorBrush x:Key="BorderColor" Color="#FF333333"/>
+    <SolidColorBrush x:Key="FocusBorderColor" Color="#FF2F80ED"/>
+
+    <SolidColorBrush x:Key="WindowButtonHover" Color="#FF333333"/>
+    <SolidColorBrush x:Key="WindowButtonPressed" Color="#FF454545"/>
+    <SolidColorBrush x:Key="WindowButtonHoverForeground" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="CloseButtonHover" Color="#FFE81123"/>
+    <SolidColorBrush x:Key="CloseButtonPressed" Color="#FFB50C19"/>
+    <SolidColorBrush x:Key="CloseButtonHoverForeground" Color="#FFFFFFFF"/>
+
+    <SolidColorBrush x:Key="ComboKeyboardFocus" Color="#FF245FAE"/>
+    <SolidColorBrush x:Key="ComboHoverBorder" Color="#FF596473"/>
+    <SolidColorBrush x:Key="InputColor" Color="#FF2C2C2C"/>
+    <SolidColorBrush x:Key="InputPlaceholder" Color="#FFB8C0CA"/>
+    <SolidColorBrush x:Key="InputHoverBorder" Color="#FF555555"/>
+
+    <SolidColorBrush x:Key="UpdateBackground" Color="#FF202C3A"/>
+    <SolidColorBrush x:Key="UpdateForeground" Color="#FFB9D8FF"/>
+    <SolidColorBrush x:Key="UpdateHoverBackground" Color="#FF293C52"/>
+    <SolidColorBrush x:Key="UpdatePressedBackground" Color="#FF26384D"/>
+    <SolidColorBrush x:Key="DeleteHoverForeground" Color="#FFF0626D"/>
+    <SolidColorBrush x:Key="ActionButtonForeground" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="ActionButtonDestructiveBackground" Color="#FF1E1E1E"/>
+    <SolidColorBrush x:Key="ActionButtonDestructiveForeground" Color="#FFD32F2F"/>
+    <SolidColorBrush x:Key="StatusAttention" Color="#FFFFB74D"/>
+    <SolidColorBrush x:Key="StatusProtected" Color="#FF66BB6A"/>
+</ResourceDictionary>
