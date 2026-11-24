@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Reflection;
 using System.Runtime.ExceptionServices;
+using System.ServiceProcess;
 using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
@@ -51,9 +52,136 @@ internal static class Program
         await TestProtocolRoundTripAsync().ConfigureAwait(false);
         await TestProtocolRejectionsAsync().ConfigureAwait(false);
         TestRequestValidation();
+        await TestServiceStartupCoordinatorAsync().ConfigureAwait(false);
+        TestServiceStartupBackoff();
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
         TestProfileSwitchJournal();
         TestProfileSwitchSelection();
+    }
+
+    private static async Task TestServiceStartupCoordinatorAsync()
+    {
+        int starts = 0;
+        int delays = 0;
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => ServiceControllerStatus.Running,
+            _ => { starts++; return Task.CompletedTask; },
+            _ => { delays++; return Task.CompletedTask; },
+            CancellationToken.None).ConfigureAwait(false);
+        Check(starts == 0 && delays == 0,
+            "an already-running service is left alone.");
+
+        var pendingStatuses = new Queue<ServiceControllerStatus>([
+            ServiceControllerStatus.StartPending,
+            ServiceControllerStatus.StartPending,
+            ServiceControllerStatus.Running
+        ]);
+        starts = 0;
+        delays = 0;
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => pendingStatuses.Dequeue(),
+            _ => { starts++; return Task.CompletedTask; },
+            _ => { delays++; return Task.CompletedTask; },
+            CancellationToken.None).ConfigureAwait(false);
+        Check(starts == 0 && delays == 2,
+            "StartPending is polled until Running without issuing a duplicate start.");
+
+        ServiceControllerStatus status = ServiceControllerStatus.Stopped;
+        starts = 0;
+        delays = 0;
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => status,
+            _ => { starts++; status = ServiceControllerStatus.StartPending; return Task.CompletedTask; },
+            _ => { delays++; status = ServiceControllerStatus.Running; return Task.CompletedTask; },
+            CancellationToken.None).ConfigureAwait(false);
+        Check(starts == 1 && delays == 1,
+            "a successful start request is polled through StartPending to Running.");
+
+        status = ServiceControllerStatus.Stopped;
+        starts = 0;
+        delays = 0;
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => status,
+            _ =>
+            {
+                starts++;
+                status = ServiceControllerStatus.Running;
+                throw new InvalidOperationException("another actor started the service first");
+            },
+            _ => { delays++; return Task.CompletedTask; },
+            CancellationToken.None).ConfigureAwait(false);
+        Check(starts == 1 && delays == 0,
+            "a start failure caused by a concurrent successful start is accepted after rereading status.");
+
+        status = ServiceControllerStatus.Stopped;
+        starts = 0;
+        delays = 0;
+        await ServiceStartupCoordinator.EnsureRunningAsync(
+            () => status,
+            _ =>
+            {
+                starts++;
+                status = ServiceControllerStatus.StartPending;
+                throw new InvalidOperationException("another actor has a start in flight");
+            },
+            _ => { delays++; status = ServiceControllerStatus.Running; return Task.CompletedTask; },
+            CancellationToken.None).ConfigureAwait(false);
+        Check(starts == 1 && delays == 1,
+            "a start failure caused by a concurrent pending transition is polled to Running.");
+
+        var expectedFailure = new InvalidOperationException("injected service start failure");
+        status = ServiceControllerStatus.Stopped;
+        starts = 0;
+        Exception? observedFailure = null;
+        try
+        {
+            await ServiceStartupCoordinator.EnsureRunningAsync(
+                () => status,
+                _ => { starts++; throw expectedFailure; },
+                _ => Task.CompletedTask,
+                CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception exception)
+        {
+            observedFailure = exception;
+        }
+        Check(starts == 1 && ReferenceEquals(observedFailure, expectedFailure),
+            "a failed start is propagated when the service remains stopped.");
+
+        using var canceledWait = new CancellationTokenSource();
+        status = ServiceControllerStatus.StartPending;
+        bool cancellationObserved = false;
+        try
+        {
+            await ServiceStartupCoordinator.EnsureRunningAsync(
+                () => status,
+                _ => throw new InvalidOperationException("pending state must not start again"),
+                _ => { canceledWait.Cancel(); return Task.CompletedTask; },
+                canceledWait.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            cancellationObserved = true;
+        }
+        Check(cancellationObserved,
+            "cancellation interrupts service status polling.");
+    }
+
+    private static void TestServiceStartupBackoff()
+    {
+        int[] expectedDelays = [10, 20, 40, 60, 60];
+        int delay = 5;
+        foreach (int expected in expectedDelays)
+        {
+            delay = ServiceStartupBackoff.NextDelaySeconds(delay);
+            Check(delay == expected,
+                $"service retry backoff advances to {expected} seconds and respects the cap.");
+        }
+
+        Check(ServiceStartupBackoff.NextDelaySeconds(7, maximumSeconds: 10) == 10,
+            "service retry backoff accepts a custom cap.");
+        Check(ServiceStartupBackoff.NextDelaySeconds(int.MaxValue) == 60,
+            "service retry backoff caps without integer overflow.");
     }
 
     private static async Task TestProfileSwitchTransactionAsync()
