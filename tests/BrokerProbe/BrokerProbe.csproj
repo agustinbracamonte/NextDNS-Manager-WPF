@@ -11,5 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\NextDNSManager.Service\NextDNSManager.Service.csproj" />
     <Compile Include="..\..\NextDNSModernWPF\BrokerClient.cs" Link="BrokerClient.cs" />
+    <Compile Include="..\..\Shared\ProfileSwitchSelection.cs" Link="ProfileSwitchSelection.cs" />
   </ItemGroup>
 </Project>
