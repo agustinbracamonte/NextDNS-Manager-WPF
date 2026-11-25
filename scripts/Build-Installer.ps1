@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$appVersion = '1.3.7'
+$appVersion = '1.3.8'
 $expectedCliSha256 = '5a603c759bc4a854a6aae46cadb91ae00a95ba5bb0591b985f49a95597856b8e'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $projectFile = Join-Path $projectRoot 'NextDNSModernWPF\NextDNSModernWPF.csproj'

@@ -1,29 +1,165 @@
 <Window x:Class="NextDNSModernWPF.DiagnosticsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Registros de diagnóstico" Height="540" Width="760"
-        MinHeight="360" MinWidth="520" WindowStartupLocation="CenterOwner"
+        Title="Registros de diagnóstico" Height="600" Width="820"
+        MinHeight="420" MinWidth="560" WindowStartupLocation="CenterOwner"
         Background="{DynamicResource WindowSurface}" Foreground="{DynamicResource TextPrimary}">
-    <Grid Margin="18">
+    <Window.Resources>
+        <Style x:Key="PrimaryActionButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{DynamicResource NextBlue}"/>
+            <Setter Property="Foreground" Value="{DynamicResource ActionButtonForeground}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonSurface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.76"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
+                                <Setter TargetName="ButtonSurface" Property="BorderThickness" Value="1"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryActionButton" TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{DynamicResource CardColor}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="MinHeight" Value="36"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="ButtonSurface"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Background" Value="{DynamicResource WindowButtonHover}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="Background" Value="{DynamicResource WindowButtonPressed}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="ButtonSurface" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="ButtonSurface" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DiagnosticsLogTextBox" TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="2"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+            <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+            <Setter Property="VerticalContentAlignment" Value="Top"/>
+            <Setter Property="CaretBrush" Value="{DynamicResource NextBlue}"/>
+            <Setter Property="SelectionBrush" Value="{DynamicResource NextBlue}"/>
+            <Setter Property="SelectionOpacity" Value="0.35"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Text="La app conserva 30 días. Los eventos del servicio se filtran a 30 días desde el registro Aplicación de Windows. No incluyen datos de perfiles ni consultas."
-                   Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,10" TextWrapping="Wrap"/>
-
-        <TextBox x:Name="txtDiagnostics" Grid.Row="1" IsReadOnly="True" AcceptsReturn="True"
-                 TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                 FontFamily="Consolas" FontSize="12" Padding="10"/>
-
-        <DockPanel Grid.Row="2" Margin="0,12,0,0" LastChildFill="False">
-            <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
-                <Button Content="Actualizar" MinWidth="88" Height="32" Margin="0,0,8,0" Click="Refresh_Click"/>
-                <Button Content="Abrir registros de la app" MinWidth="156" Height="32" Margin="0,0,8,0" Click="OpenManagerFolder_Click"/>
+        <Grid Grid.Row="0" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <StackPanel>
+                <TextBlock Text="Actividad reciente" FontSize="20" FontWeight="SemiBold"
+                           Foreground="{DynamicResource TextPrimary}"/>
+                <TextBlock Text="La app conserva registros durante 30 días. Los eventos del servicio se filtran por ese período desde el registro Aplicación de Windows. No incluyen datos de perfiles ni consultas."
+                           Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,6,16,0"
+                           TextWrapping="Wrap" LineHeight="18"/>
             </StackPanel>
-            <Button Content="Cerrar" MinWidth="88" Height="32" Margin="8,0,0,0" IsCancel="True" Click="Close_Click"/>
-        </DockPanel>
+            <Border Grid.Column="1" Background="{DynamicResource UpdateBackground}" CornerRadius="14"
+                    Padding="12,7" VerticalAlignment="Top" Margin="12,2,0,0">
+                <TextBlock Text="30 DÍAS" Foreground="{DynamicResource UpdateForeground}"
+                           FontSize="11" FontWeight="SemiBold"/>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" Background="{DynamicResource CardColor}"
+                BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="10">
+            <Grid Margin="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="1"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <Grid Margin="16,12,16,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Salida de diagnóstico" FontSize="12" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Text="Solo lectura" FontSize="11"
+                               Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                </Grid>
+                <Border Grid.Row="1" Background="{DynamicResource BorderColor}"/>
+                <TextBox x:Name="txtDiagnostics" Grid.Row="2" Margin="14,10,14,12"
+                         IsReadOnly="True" AcceptsReturn="True" Style="{StaticResource DiagnosticsLogTextBox}"/>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="Actualizar" MinWidth="100" Margin="0,0,8,0"
+                    Style="{StaticResource PrimaryActionButton}" Click="Refresh_Click"/>
+            <Button Content="Abrir registros de la app" MinWidth="174" Margin="0,0,8,0"
+                    Style="{StaticResource SecondaryActionButton}" Click="OpenManagerFolder_Click"/>
+            <Button Content="Cerrar" MinWidth="84" IsCancel="True"
+                    Style="{StaticResource SecondaryActionButton}" Click="Close_Click"/>
+        </StackPanel>
     </Grid>
 </Window>
