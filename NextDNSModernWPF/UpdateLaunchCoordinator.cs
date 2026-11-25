@@ -169,6 +169,7 @@ internal static class UpdateLaunchCoordinator
             return 1;
         }
 
+        bool installerStarted = false;
         try
         {
             await pipe.DisposeAsync().ConfigureAwait(false);
@@ -179,6 +180,7 @@ internal static class UpdateLaunchCoordinator
             verifiedInstaller.EnsureStillVerified();
             using Process installerProcess = Process.Start(verifiedInstaller.CreateElevatedInstallerStartInfo())
                 ?? throw new InvalidOperationException("Windows no inició el instalador.");
+            installerStarted = true;
 
             await installerProcess.WaitForExitAsync().ConfigureAwait(false);
             if (installerProcess.ExitCode != 0)
@@ -188,6 +190,7 @@ internal static class UpdateLaunchCoordinator
                     "Actualización de NextDNS Manager",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
+                TryRestartInstalledManager();
             }
             return installerProcess.ExitCode;
         }
@@ -198,6 +201,7 @@ internal static class UpdateLaunchCoordinator
                 "Actualización cancelada",
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
+            TryRestartInstalledManager();
             return 0;
         }
         catch
@@ -207,11 +211,36 @@ internal static class UpdateLaunchCoordinator
                 "Actualización de NextDNS Manager",
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
+            if (!installerStarted)
+                TryRestartInstalledManager();
             return 1;
         }
         finally
         {
             verifiedInstaller.Dispose();
+        }
+    }
+
+    private static void TryRestartInstalledManager()
+    {
+        try
+        {
+            string managerDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "NextDNS Manager");
+            string managerExecutable = Path.Combine(managerDirectory, "NextDNSModernWPF.exe");
+            if (!File.Exists(managerExecutable))
+                return;
+
+            Process.Start(new ProcessStartInfo(managerExecutable)
+            {
+                UseShellExecute = false,
+                WorkingDirectory = managerDirectory
+            });
+        }
+        catch
+        {
+            // The failure dialog already tells the user how to reopen the Manager.
         }
     }
 }
