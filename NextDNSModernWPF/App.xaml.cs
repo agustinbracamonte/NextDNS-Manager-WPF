@@ -4,17 +4,22 @@ using System.Windows;
 using Microsoft.Win32;
 using System.Security.Principal;
 using System.Threading.Tasks;
+using NextDNSManager.Shared;
 
 namespace NextDNSModernWPF
 {
     public partial class App : System.Windows.Application
     {
         private SingleInstanceCoordinator? _singleInstance;
+        private bool _primaryInstance;
 
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
             SessionEnding += App_SessionEnding;
+            DispatcherUnhandledException += App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException += App_UnhandledException;
+            TaskScheduler.UnobservedTaskException += App_UnobservedTaskException;
 
             try
             {
@@ -25,6 +30,8 @@ namespace NextDNSModernWPF
                     Shutdown();
                     return;
                 }
+                _primaryInstance = true;
+                DiagnosticLog.WriteManager(DiagnosticEvent.ManagerStarted);
 
                 ConfigureAutostart();
                 SystemEvents.PowerModeChanged += PowerModeChanged;
@@ -56,10 +63,20 @@ namespace NextDNSModernWPF
         protected override void OnExit(ExitEventArgs e)
         {
             SystemEvents.PowerModeChanged -= PowerModeChanged;
+            DispatcherUnhandledException -= App_DispatcherUnhandledException;
+            AppDomain.CurrentDomain.UnhandledException -= App_UnhandledException;
+            TaskScheduler.UnobservedTaskException -= App_UnobservedTaskException;
+            if (_primaryInstance)
+                DiagnosticLog.WriteManager(DiagnosticEvent.ManagerShutdown);
             try
             {
-                _singleInstance?.Dispose();
-                _singleInstance = null;
+                try { _singleInstance?.Dispose(); }
+                catch (Exception exception)
+                {
+                    DiagnosticLog.WriteManager(DiagnosticEvent.ManagerShutdownFailure, exception);
+                    throw;
+                }
+                finally { _singleInstance = null; }
             }
             finally
             {
@@ -75,9 +92,19 @@ namespace NextDNSModernWPF
 
         private void App_SessionEnding(object? sender, SessionEndingCancelEventArgs e)
         {
+            DiagnosticLog.WriteManager(DiagnosticEvent.WindowsSessionEnding);
             if (this.MainWindow is NextDNSModernWPF.MainWindow window)
                 window.AllowCloseForSessionEnding();
         }
+
+        private void App_DispatcherUnhandledException(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e) =>
+            DiagnosticLog.WriteManager(DiagnosticEvent.DispatcherUnhandledException, e.Exception);
+
+        private void App_UnhandledException(object sender, UnhandledExceptionEventArgs e) =>
+            DiagnosticLog.WriteManager(DiagnosticEvent.ProcessUnhandledException, e.ExceptionObject as Exception);
+
+        private void App_UnobservedTaskException(object? sender, UnobservedTaskExceptionEventArgs e) =>
+            DiagnosticLog.WriteManager(DiagnosticEvent.UnobservedTaskException, e.Exception);
 
         private async void PowerModeChanged(object sender, PowerModeChangedEventArgs e)
         {
@@ -107,7 +134,10 @@ namespace NextDNSModernWPF
                 ConfigureResumeTask(path);
                 settings.SetValue("StartupConfigured", 1, RegistryValueKind.DWord);
             }
-            catch (Exception ex) { LogStartupFailure(ex); }
+            catch (Exception ex)
+            {
+                DiagnosticLog.WriteManager(DiagnosticEvent.AutostartConfigurationFailure, ex);
+            }
         }
 
         private static void ConfigureResumeTask(string executable)
@@ -135,24 +165,7 @@ namespace NextDNSModernWPF
             folder.RegisterTaskDefinition("NextDNS Manager Resume " + sid, task, 6, null, null, 3, null);
         }
 
-        private static void LogStartupFailure(Exception exception)
-        {
-            try
-            {
-                string logDirectory = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                    "NextDNSManager");
-                Directory.CreateDirectory(logDirectory);
-                string logPath = Path.Combine(logDirectory, "startup.log");
-                File.AppendAllText(
-                    logPath,
-                    $"[{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}] Startup failure{Environment.NewLine}" +
-                    exception + Environment.NewLine + Environment.NewLine);
-            }
-            catch
-            {
-                // Startup logging must not prevent the error dialog or shutdown.
-            }
-        }
+        private static void LogStartupFailure(Exception exception) =>
+            DiagnosticLog.WriteManager(DiagnosticEvent.StartupFailure, exception);
     }
 }
