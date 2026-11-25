@@ -221,6 +221,96 @@
             </Setter>
         </Style>
 
+        <Style x:Key="UpdateCancelBtnStyle" TargetType="Button">
+            <Setter Property="Background" Value="{DynamicResource CardColor}"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="8,2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="cancelBorder" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="{TemplateBinding Padding}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="cancelBorder" Property="Background" Value="{DynamicResource UpdateBackground}"/>
+                                <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="cancelBorder" Property="Background" Value="{DynamicResource UpdatePressedBackground}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="cancelBorder" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="cancelBorder" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ProgressBar">
+            <Setter Property="Background" Value="{DynamicResource BorderColor}"/>
+            <Setter Property="Foreground" Value="{DynamicResource NextBlue}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border x:Name="PART_Track" Background="{TemplateBinding Background}" CornerRadius="3" ClipToBounds="True">
+                            <Border x:Name="PART_Indicator" HorizontalAlignment="Left" Background="{TemplateBinding Foreground}" CornerRadius="3"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="{TemplateBinding Background}" ClipToBounds="True">
+                            <Track x:Name="PART_Track"
+                                   Minimum="{TemplateBinding Minimum}"
+                                   Maximum="{TemplateBinding Maximum}"
+                                   Value="{TemplateBinding Value}"
+                                   ViewportSize="{TemplateBinding ViewportSize}"
+                                   Orientation="{TemplateBinding Orientation}"
+                                   IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb>
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="scrollThumb" Background="{DynamicResource TextSecondary}" CornerRadius="3" Margin="1,2"/>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="scrollThumb" Property="Background" Value="{DynamicResource NextBlue}"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsDragging" Value="True">
+                                                        <Setter TargetName="scrollThumb" Property="Background" Value="{DynamicResource NextBlue}"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style TargetType="CheckBox" x:Key="ModernCheck">
             <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -337,8 +427,8 @@
                     <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,12" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
                     <StackPanel x:Name="updateProgressPanel" Visibility="Collapsed" Margin="0,0,0,18">
                         <TextBlock x:Name="updateProgressText" Text="Preparando descarga…" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
-                        <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,3"/>
-                        <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" HorizontalAlignment="Left" Padding="0" Background="Transparent" Foreground="{DynamicResource TextSecondary}" BorderThickness="0" FontSize="11" Cursor="Hand" Click="BtnCancelUpdate_Click"/>
+                        <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,5"/>
+                        <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" Style="{StaticResource UpdateCancelBtnStyle}" HorizontalAlignment="Left" Height="24" Click="BtnCancelUpdate_Click"/>
                     </StackPanel>
 
                     <Border Background="{DynamicResource CardColor}" CornerRadius="15" Padding="20" Margin="0,0,0,20">

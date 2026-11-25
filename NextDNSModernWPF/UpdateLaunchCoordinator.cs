@@ -121,9 +121,8 @@ internal static class UpdateLaunchCoordinator
             await SendStatusAsync(pipe, 3).ConfigureAwait(false);
 
             string confirmation =
-                $"Se descargó NextDNS Manager {verifiedInstaller.Version} y se comparó su SHA-256 con SHA256SUMS.txt de la misma publicación de GitHub.\n\n" +
-                "Este hash ayuda a detectar daños o cambios en la descarga, pero no autentica al publicador. Si la cuenta, el repositorio o el workflow de GitHub estuvieran comprometidos, el instalador y el checksum podrían reemplazarse juntos.\n\n" +
-                "Si continúas, NextDNS Manager se cerrará y Windows abrirá el instalador, que solicitará permisos de administrador. ¿Quieres continuar?";
+                $"La versión {verifiedInstaller.Version} está lista. El instalador no tiene firma digital; SHA-256 solo comprueba que coincide con SHA256SUMS y no autentica al publicador.\n\n" +
+                "Si continúas, NextDNS Manager se cerrará y Windows pedirá permisos para ejecutar el instalador. ¿Continuar?";
             MessageBoxResult confirmationResult = System.Windows.MessageBox.Show(
                 confirmation,
                 "Confirmar instalación de NextDNS Manager",
