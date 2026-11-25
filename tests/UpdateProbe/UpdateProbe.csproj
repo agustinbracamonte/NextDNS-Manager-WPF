@@ -11,5 +11,6 @@
   <ItemGroup>
     <Compile Include="..\..\NextDNSModernWPF\UpdateChecker.cs" Link="UpdateChecker.cs" />
     <Compile Include="..\..\NextDNSModernWPF\UpdateInstaller.cs" Link="UpdateInstaller.cs" />
+    <Compile Include="..\..\NextDNSModernWPF\UpdateHelperCopy.cs" Link="UpdateHelperCopy.cs" />
   </ItemGroup>
 </Project>

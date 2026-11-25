@@ -1,5 +1,5 @@
 #define MyAppName "NextDNS Manager"
-#define MyAppVersion "1.3.8"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "Agustín Bracamonte"
 #define MyAppExeName "NextDNSModernWPF.exe"
 
@@ -32,11 +32,11 @@ DisableProgramGroupPage=yes
 AppMutex=NextDNSManagerWPF-Running
 RestartApplications=no
 OutputDir=..\artifacts
-OutputBaseFilename=NextDNS-Manager-1.3.8-Setup-x64
+OutputBaseFilename=NextDNS-Manager-1.4.0-Setup-x64
 Compression=lzma2/ultra64
 SolidCompression=yes
 SetupLogging=yes
-VersionInfoVersion=1.3.8.0
+VersionInfoVersion=1.4.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Instalador de NextDNS Manager
 VersionInfoProductName={#MyAppName}
@@ -49,7 +49,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: unchecked
 
 [Files]
-Source: "..\artifacts\publish-1.3.8-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\publish-1.4.0-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\NextDNSManager.ico"
@@ -221,13 +221,33 @@ end;
 
 function ManagerIsRunning(): Boolean;
 var
-  Locator, Services, Processes: Variant;
+  Locator, Services, Processes, Process: Variant;
+  ProcessIndex: Integer;
+  ProcessPath, InstalledManagerPath: String;
 begin
-  { Include older versions which did not create AppMutex. Check every session. }
+  { Include older versions which did not create AppMutex. Check every session,
+    but ignore the update helper running from its private LocalAppData copy. }
   Locator := CreateOleObject('WbemScripting.SWbemLocator');
   Services := Locator.ConnectServer('.', 'root\CIMV2');
-  Processes := Services.ExecQuery('SELECT ProcessId FROM Win32_Process WHERE Name = ''NextDNSModernWPF.exe''');
-  Result := Processes.Count > 0;
+  Processes := Services.ExecQuery('SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE Name = ''NextDNSModernWPF.exe''');
+  InstalledManagerPath := ExpandConstant('{app}\NextDNSModernWPF.exe');
+  Result := False;
+  for ProcessIndex := 0 to Processes.Count - 1 do
+  begin
+    Process := Processes.ItemIndex(ProcessIndex);
+    if VarIsNull(Process.ExecutablePath) then
+    begin
+      { Fail closed if Windows cannot identify the image path of a matching process. }
+      Result := True;
+      Exit;
+    end;
+    ProcessPath := Process.ExecutablePath;
+    if CompareText(ProcessPath, InstalledManagerPath) = 0 then
+    begin
+      Result := True;
+      Exit;
+    end;
+  end;
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;

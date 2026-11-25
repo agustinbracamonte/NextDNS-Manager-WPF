@@ -25,6 +25,7 @@ internal static class Program
             await TestUntrustedAssetUrlsAsync();
             TestChecksumManifestValidation();
             TestDownloadRedirectValidation();
+            TestHelperBundleCopyAndCleanup();
             await TestDownloaderFollowsOnlyAllowedRedirectsAsync();
             await TestRequestUsesFixedEndpointAndHeadersAsync();
 
@@ -171,6 +172,55 @@ internal static class Program
             "Reject a lookalike asset host.");
         Check(!UpdateInstaller.IsAllowedDownloadRedirect(original, new Uri("https://github.com/evil/payload.exe")),
             "Reject a redirect to a different GitHub path.");
+    }
+
+    private static void TestHelperBundleCopyAndCleanup()
+    {
+        string source = Path.Combine(Path.GetTempPath(), "NextDNS-UpdateProbe-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(source);
+        string copiedDirectory = "";
+        try
+        {
+            foreach (string requiredFile in new[]
+            {
+                "NextDNSModernWPF.exe",
+                "NextDNSModernWPF.dll",
+                "NextDNSModernWPF.runtimeconfig.json",
+                "NextDNSModernWPF.deps.json"
+            })
+            {
+                File.WriteAllText(Path.Combine(source, requiredFile), "test bundle file");
+            }
+            string runtimeDirectory = Path.Combine(source, "runtime");
+            Directory.CreateDirectory(runtimeDirectory);
+            File.WriteAllText(Path.Combine(runtimeDirectory, "test-runtime.dll"), "runtime dependency");
+
+            using (UpdateHelperCopy copy = UpdateHelperCopy.CreateFromDirectory(source))
+            {
+                copiedDirectory = copy.DirectoryPath;
+                Check(File.Exists(copy.ExecutablePath),
+                    "Create a private helper copy with its application host.");
+                Check(File.ReadAllText(Path.Combine(copy.DirectoryPath, "runtime", "test-runtime.dll")) == "runtime dependency",
+                    "Copy nested runtime dependencies along with the application host.");
+                UpdateHelperCopy.CleanupStaleCopies();
+                Check(Directory.Exists(copy.DirectoryPath),
+                    "Do not partially remove a helper bundle while its directory lock is held.");
+                copy.DeferCleanupUntilNextLaunch();
+            }
+
+            Check(Directory.Exists(copiedDirectory),
+                "Keep a running helper copy until its executable can be released.");
+            UpdateHelperCopy.CleanupStaleCopies();
+            Check(!Directory.Exists(copiedDirectory),
+                "Remove abandoned helper copies from the private LocalAppData directory.");
+        }
+        finally
+        {
+            try { if (Directory.Exists(source)) Directory.Delete(source, recursive: true); }
+            catch { }
+            try { if (Directory.Exists(copiedDirectory)) Directory.Delete(copiedDirectory, recursive: true); }
+            catch { }
+        }
     }
 
     private static async Task TestDownloaderFollowsOnlyAllowedRedirectsAsync()
