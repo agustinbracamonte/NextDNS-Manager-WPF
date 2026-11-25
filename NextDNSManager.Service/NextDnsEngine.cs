@@ -275,7 +275,7 @@ internal sealed class NextDnsEngine
             try { ClearProfileSwitchJournal(); }
             catch (Exception error) when (error is not OutOfMemoryException)
             {
-                ServiceLog.Write("Limpieza pendiente del cambio de perfil: " + error.Message);
+                ServiceLog.Write(DiagnosticEvent.ServiceProfileSwitchCleanupPending, error);
             }
             return Task.CompletedTask;
         }
@@ -384,7 +384,7 @@ internal sealed class NextDnsEngine
         {
             await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
         }
-        catch (Exception ex) { ServiceLog.Write("Reconciliación en espera: " + ex.Message); return false; }
+        catch (Exception ex) { ServiceLog.Write(DiagnosticEvent.ServiceReconcileWaitFailure, ex); return false; }
 
         try
         {
@@ -418,7 +418,7 @@ internal sealed class NextDnsEngine
             }, deadline.Token).ConfigureAwait(false);
             return true;
         }
-        catch (Exception ex) { ServiceLog.Write("Reconciliación DNS: " + ex.Message); return false; }
+        catch (Exception ex) { ServiceLog.Write(DiagnosticEvent.ServiceReconcileFailure, ex); return false; }
         finally { _operations.Release(); }
     }
 

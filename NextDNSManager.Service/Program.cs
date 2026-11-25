@@ -53,21 +53,40 @@ internal sealed class BrokerWindowsService : ServiceBase
         CanStop = true;
         CanShutdown = true;
         CanHandlePowerEvent = true;
-        AutoLog = true;
+        AutoLog = false;
     }
     protected override void OnStart(string[] args)
     {
-        _server = new PipeServer();
-        _server.Start();
-        _networkDebounce = new System.Threading.Timer(state => QueueReconcile());
-        System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += NetworkChanged;
-        System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += NetworkAvailabilityChanged;
-        _networkDebounce.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+        try
+        {
+            _server = new PipeServer();
+            _server.Start();
+            _networkDebounce = new System.Threading.Timer(state => QueueReconcile());
+            System.Net.NetworkInformation.NetworkChange.NetworkAddressChanged += NetworkChanged;
+            System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged += NetworkAvailabilityChanged;
+            _networkDebounce.Change(TimeSpan.FromSeconds(2), Timeout.InfiniteTimeSpan);
+            ServiceLog.Write(DiagnosticEvent.ServiceStarted);
+        }
+        catch (Exception ex)
+        {
+            ServiceLog.Write(DiagnosticEvent.ServiceStartFailure, ex);
+            throw;
+        }
     }
     protected override void OnStop()
     {
-        RequestAdditionalTime(70000);
-        StopServer();
+        ServiceLog.Write(DiagnosticEvent.ServiceStopRequested);
+        try
+        {
+            RequestAdditionalTime(70000);
+            StopServer();
+            ServiceLog.Write(DiagnosticEvent.ServiceStopped);
+        }
+        catch (Exception ex)
+        {
+            ServiceLog.Write(DiagnosticEvent.ServiceStopFailure, ex);
+            throw;
+        }
     }
     private void StopServer()
     {
@@ -77,10 +96,20 @@ internal sealed class BrokerWindowsService : ServiceBase
         System.Net.NetworkInformation.NetworkChange.NetworkAvailabilityChanged -= NetworkAvailabilityChanged;
         _networkDebounce?.Dispose();
         _server?.Dispose();
-        try { pending.GetAwaiter().GetResult(); } catch (Exception ex) { ServiceLog.Write(ex.Message); }
+        try { pending.GetAwaiter().GetResult(); }
+        catch (Exception ex) { ServiceLog.Write(DiagnosticEvent.ServiceStopDrainFailure, ex); }
         _server = null;
     }
-    protected override void OnShutdown() => StopServer();
+    protected override void OnShutdown()
+    {
+        ServiceLog.Write(DiagnosticEvent.ServiceShutdown);
+        try { StopServer(); }
+        catch (Exception ex)
+        {
+            ServiceLog.Write(DiagnosticEvent.ServiceStopFailure, ex);
+            throw;
+        }
+    }
     protected override bool OnPowerEvent(PowerBroadcastStatus powerStatus)
     {
         if (powerStatus is PowerBroadcastStatus.ResumeAutomatic or PowerBroadcastStatus.ResumeSuspend)
@@ -120,7 +149,7 @@ internal sealed class BrokerWindowsService : ServiceBase
             }
             bool succeeded = false;
             try { succeeded = await engine.ReconcileAsync().ConfigureAwait(false); }
-            catch (Exception ex) { ServiceLog.Write("Reconciliación: " + ex.Message); }
+            catch (Exception ex) { ServiceLog.Write(DiagnosticEvent.ServiceReconcileFailure, ex); }
             lock (_reconcileLock)
             {
                 if (succeeded) _retrySeconds = 5;

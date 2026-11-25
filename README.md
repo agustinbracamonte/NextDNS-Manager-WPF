@@ -59,7 +59,7 @@ Instala .NET 10 SDK e Inno Setup 7 y ejecuta:
 powershell -File .\scripts\Build-Installer.ps1
 ```
 
-El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.3.5-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
+El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.3.6-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
 
 La versión 1.1.2 evita instancias e iconos duplicados y bloquea la instalación o desinstalación mientras el Manager siga abierto. La X oculta la ventana; usa **Salir** desde la bandeja para cerrar el programa antes de reparar o actualizar. El instalador verifica todos los archivos copiados mediante SHA-256. Puedes repetir esa comprobación con `powershell -File .\scripts\Test-InstallLayout.ps1 -Directory 'C:\Program Files\NextDNS Manager'`. El diagnóstico del error de arranque está en [docs/ARRANQUE_Y_BANDEJA.md](docs/ARRANQUE_Y_BANDEJA.md).
 
@@ -71,6 +71,8 @@ La versión 1.1.2 evita instancias e iconos duplicados y bloquea la instalación
 El [servicio auxiliar de control](docs/PERMISOS_Y_SERVICIO.md) limita el acceso al usuario de la sesión que instaló el Manager y conserva el DNS anterior al desactivar. El CLI permanece instalado entre activaciones. Cerrar la interfaz conserva el estado de protección elegido.
 
 El Manager se registra una vez para iniciar en la bandeja al comenzar la sesión de Windows. Se puede desactivar desde la sección Aplicaciones de inicio del Administrador de tareas. La protección DNS funciona mediante los servicios de Windows aunque la ventana esté cerrada, y el servicio comprueba su estado al reanudar desde suspensión o hibernación.
+
+El botón **Registros de diagnóstico** muestra eventos sanitizados de la aplicación y del servicio. Las ubicaciones, los límites y la retención se describen en [docs/REGISTROS_DIAGNOSTICO.md](docs/REGISTROS_DIAGNOSTICO.md).
 
 ## Actualizaciones
 

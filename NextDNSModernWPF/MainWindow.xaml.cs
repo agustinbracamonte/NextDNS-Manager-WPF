@@ -276,14 +276,23 @@ namespace NextDNSModernWPF
             _trayContextMenu = null;
             _trayIcon = null;
 
-            try { if (notifyIcon != null) notifyIcon.Visible = false; } catch { }
-            try { if (notifyIcon != null) notifyIcon.DoubleClick -= NotifyIcon_DoubleClick; } catch { }
-            try { if (notifyIcon != null) notifyIcon.BalloonTipClicked -= NotifyIcon_BalloonTipClicked; } catch { }
-            try { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; } catch { }
-            try { if (contextMenu != null) contextMenu.Opening -= TrayContextMenu_Opening; } catch { }
-            try { notifyIcon?.Dispose(); } catch { }
-            try { contextMenu?.Dispose(); } catch { }
-            try { trayIcon?.Dispose(); } catch { }
+            TryLogTrayCleanup(() => { if (notifyIcon != null) notifyIcon.Visible = false; });
+            TryLogTrayCleanup(() => { if (notifyIcon != null) notifyIcon.DoubleClick -= NotifyIcon_DoubleClick; });
+            TryLogTrayCleanup(() => { if (notifyIcon != null) notifyIcon.BalloonTipClicked -= NotifyIcon_BalloonTipClicked; });
+            TryLogTrayCleanup(() => { if (notifyIcon != null) notifyIcon.ContextMenuStrip = null; });
+            TryLogTrayCleanup(() => { if (contextMenu != null) contextMenu.Opening -= TrayContextMenu_Opening; });
+            TryLogTrayCleanup(() => notifyIcon?.Dispose());
+            TryLogTrayCleanup(() => contextMenu?.Dispose());
+            TryLogTrayCleanup(() => trayIcon?.Dispose());
+        }
+
+        private static void TryLogTrayCleanup(Action cleanup)
+        {
+            try { cleanup(); }
+            catch (Exception exception)
+            {
+                DiagnosticLog.WriteManager(DiagnosticEvent.TrayCleanupFailure, exception);
+            }
         }
 
         private void TrayContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
@@ -324,6 +333,7 @@ namespace NextDNSModernWPF
             }
             catch (Exception ex)
             {
+                DiagnosticLog.WriteManager(DiagnosticEvent.UpdateCheckFailure, ex);
                 if (manual && !_trayDisposed)
                     System.Windows.MessageBox.Show("No se pudo buscar actualizaciones. Comprueba tu conexión e inténtalo de nuevo.\n" + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
@@ -341,6 +351,7 @@ namespace NextDNSModernWPF
             }
             catch (Exception ex)
             {
+                DiagnosticLog.WriteManager(DiagnosticEvent.ReleasePageOpenFailure, ex);
                 System.Windows.MessageBox.Show("No se pudo abrir la página de versiones. " + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -405,6 +416,7 @@ namespace NextDNSModernWPF
             }
             catch (Exception ex)
             {
+                DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, ex);
                 brokerStatusError = ex.Message;
                 brokerStatusUncertain = true;
                 brokerActionInProgress = false;
@@ -505,6 +517,7 @@ namespace NextDNSModernWPF
                     }
                     catch (Exception ex)
                     {
+                        DiagnosticLog.WriteManager(DiagnosticEvent.ProfileSwitchFailure, ex);
                         switchError = ex;
                         brokerStatusError = ex.Message;
                         brokerStatusUncertain = true;
@@ -582,6 +595,7 @@ namespace NextDNSModernWPF
             {
                 // A failed status request is not evidence that protection is off.
                 // Preserve the last confirmed state; on first launch keep status unknown.
+                DiagnosticLog.WriteManager(DiagnosticEvent.BrokerStatusCheckFailure, ex);
                 brokerStatusError = ex.Message;
                 brokerStatusUncertain = true;
             }
@@ -720,6 +734,16 @@ namespace NextDNSModernWPF
                 string.Equals(profile.ID, profileId, StringComparison.OrdinalIgnoreCase))?.Name ?? profileId;
         }
 
+        private void BtnDiagnostics_Click(object sender, RoutedEventArgs e)
+        {
+            try { new DiagnosticsWindow { Owner = this }.ShowDialog(); }
+            catch (Exception exception)
+            {
+                DiagnosticLog.WriteManager(DiagnosticEvent.DiagnosticsViewFailure, exception);
+                System.Windows.MessageBox.Show("No se pudo abrir el panel de diagnóstico.", "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void BtnAdd_Click(object sender, RoutedEventArgs e)
         {
             if (!string.IsNullOrWhiteSpace(txtName.Text) && !string.IsNullOrWhiteSpace(txtID.Text))
@@ -749,12 +773,28 @@ namespace NextDNSModernWPF
             if (File.Exists(profilesFile))
             {
                 try { profiles = JsonSerializer.Deserialize<List<Profile>>(File.ReadAllText(profilesFile)) ?? new List<Profile>(); }
-                catch { profiles = new List<Profile>(); }
+                catch (Exception exception)
+                {
+                    DiagnosticLog.WriteManager(DiagnosticEvent.ProfilesLoadFailure, exception);
+                    profiles = new List<Profile>();
+                }
             }
             RefreshCombo();
         }
 
-        private void SaveProfiles() { string json = JsonSerializer.Serialize(profiles); File.WriteAllText(profilesFile, json); }
+        private void SaveProfiles()
+        {
+            try
+            {
+                string json = JsonSerializer.Serialize(profiles);
+                File.WriteAllText(profilesFile, json);
+            }
+            catch (Exception exception)
+            {
+                DiagnosticLog.WriteManager(DiagnosticEvent.ProfilesSaveFailure, exception);
+                throw;
+            }
+        }
 
         private void RefreshCombo()
         {

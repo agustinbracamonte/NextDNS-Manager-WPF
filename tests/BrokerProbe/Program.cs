@@ -54,6 +54,7 @@ internal static class Program
         TestRequestValidation();
         await TestServiceStartupCoordinatorAsync().ConfigureAwait(false);
         TestServiceStartupBackoff();
+        TestDiagnosticServiceRecord();
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
         TestProfileSwitchJournal();
         TestProfileSwitchSelection();
@@ -182,6 +183,25 @@ internal static class Program
             "service retry backoff accepts a custom cap.");
         Check(ServiceStartupBackoff.NextDelaySeconds(int.MaxValue) == 60,
             "service retry backoff caps without integer overflow.");
+    }
+
+    private static void TestDiagnosticServiceRecord()
+    {
+        const string sensitiveMarker = "profile-SECRET 192.0.2.15 example.invalid";
+        string record = DiagnosticLog.CreateServiceRecord(
+            DiagnosticEvent.ServiceReconcileFailure,
+            new InvalidOperationException(sensitiveMarker),
+            suppressed: 7);
+
+        Check(!record.Contains(sensitiveMarker, StringComparison.Ordinal) &&
+              !record.Contains("192.0.2.15", StringComparison.Ordinal) &&
+              !record.Contains("example.invalid", StringComparison.Ordinal),
+            "service diagnostic records omit exception messages and sensitive request values.");
+        Check(DiagnosticLog.TryParseServiceRecord(record, out DiagnosticEvent parsedEvent, out string category, out int suppressed) &&
+              parsedEvent == DiagnosticEvent.ServiceReconcileFailure && category == "INVALID_OPERATION" && suppressed == 7,
+            "service diagnostic records round-trip only allowlisted event and error categories.");
+        Check(!DiagnosticLog.TryParseServiceRecord(record + "\t192.0.2.15", out _, out _, out _),
+            "service diagnostic reader rejects appended free-form fields.");
     }
 
     private static async Task TestProfileSwitchTransactionAsync()
