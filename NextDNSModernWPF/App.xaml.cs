@@ -16,6 +16,7 @@ namespace NextDNSModernWPF
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            UpdateHelperCopy.CleanupStaleCopies();
             if (UpdateLaunchCoordinator.IsHelperInvocation(e.Args))
             {
                 ShutdownMode = ShutdownMode.OnExplicitShutdown;

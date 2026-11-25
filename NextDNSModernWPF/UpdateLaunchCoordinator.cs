@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
@@ -33,17 +34,21 @@ internal static class UpdateLaunchCoordinator
             PipeTransmissionMode.Byte,
             PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
 
-        using Process helper = Process.Start(installer.CreateHelperStartInfo(Environment.ProcessId, pipeName))
+        using UpdateHelperCopy helperCopy = UpdateHelperCopy.CreateFromDirectory(AppContext.BaseDirectory);
+        using Process helper = Process.Start(installer.CreateHelperStartInfo(Environment.ProcessId, pipeName, helperCopy.ExecutablePath))
             ?? throw new InvalidOperationException("No se pudo iniciar el proceso de actualización.");
-
-        using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        connectTimeout.CancelAfter(PipeConnectTimeout);
+        bool helperAcceptedHandoff = false;
         try
         {
+            using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            connectTimeout.CancelAfter(PipeConnectTimeout);
             await server.WaitForConnectionAsync(connectTimeout.Token).ConfigureAwait(false);
             if (!GetNamedPipeClientProcessId(server.SafePipeHandle, out uint clientPid) || clientPid != (uint)helper.Id)
                 return HandoffResult.Failed;
 
+            // RunHelperAsync acquires its own directory lock before connecting,
+            // so the parent can release its copy lock after authenticating it.
+            helperCopy.DeferCleanupUntilNextLaunch();
             byte[] result = new byte[1];
             using var verificationTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             verificationTimeout.CancelAfter(VerificationTimeout);
@@ -57,11 +62,29 @@ internal static class UpdateLaunchCoordinator
             // The second status is intentionally not timed out: the helper is
             // displaying an explicit user confirmation dialog at this point.
             read = await server.ReadAsync(result.AsMemory(), cancellationToken).ConfigureAwait(false);
-            return read == 1 ? TranslateStatus(result[0]) : HandoffResult.Failed;
+            HandoffResult handoff = read == 1 ? TranslateStatus(result[0]) : HandoffResult.Failed;
+            helperAcceptedHandoff = handoff == HandoffResult.Ready;
+            return handoff;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException("El proceso de actualización no pudo volver a verificar la publicación a tiempo.");
+        }
+        finally
+        {
+            if (!helperAcceptedHandoff)
+            {
+                if (!helper.HasExited)
+                {
+                    try
+                    {
+                        helper.Kill(entireProcessTree: true);
+                        await helper.WaitForExitAsync().ConfigureAwait(false);
+                    }
+                    catch { }
+                }
+                helperCopy.CleanupAfterHelperExit();
+            }
         }
     }
 
@@ -95,6 +118,7 @@ internal static class UpdateLaunchCoordinator
             return 1;
         }
 
+        using FileStream helperDirectoryLock = UpdateHelperCopy.AcquireRunningLock();
         await using var pipe = new NamedPipeClientStream(
             ".",
             arguments[4],

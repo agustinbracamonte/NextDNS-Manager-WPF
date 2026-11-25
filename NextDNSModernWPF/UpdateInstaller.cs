@@ -518,7 +518,7 @@ internal sealed class UpdateInstaller : IDisposable
         return Path.GetFullPath(path);
     }
 
-    private static void ValidateExistingDirectoryChain(string directory)
+    internal static void ValidateExistingDirectoryChain(string directory)
     {
         string full = Path.GetFullPath(directory);
         string root = Path.GetPathRoot(full) ?? throw new InvalidDataException("La ruta local no es válida.");
@@ -533,7 +533,7 @@ internal sealed class UpdateInstaller : IDisposable
         }
     }
 
-    private static DirectorySecurity CreatePrivateDirectorySecurity()
+    internal static DirectorySecurity CreatePrivateDirectorySecurity()
     {
         SecurityIdentifier user = WindowsIdentity.GetCurrent().User ?? throw new InvalidOperationException("No se pudo identificar la sesión actual de Windows.");
         var security = new DirectorySecurity();
@@ -688,9 +688,13 @@ internal sealed class UpdateInstaller : IDisposable
         internal static VerifiedInstaller Create(string path, string version, string sha256, FileStream file, SafeFileHandle directory) =>
             new(path, version, sha256, file, directory);
 
-        internal ProcessStartInfo CreateHelperStartInfo(int parentProcessId, string pipeName)
+        internal ProcessStartInfo CreateHelperStartInfo(int parentProcessId, string pipeName, string helperExecutable)
         {
-            string helperExecutable = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar el ejecutable de NextDNS Manager.");
+            if (string.IsNullOrWhiteSpace(helperExecutable) ||
+                !string.Equals(System.IO.Path.GetFileName(helperExecutable), "NextDNSModernWPF.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("La copia temporal del helper no es válida.");
+            }
             var startInfo = new ProcessStartInfo(helperExecutable)
             {
                 UseShellExecute = false,
