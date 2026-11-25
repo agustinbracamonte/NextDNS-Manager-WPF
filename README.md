@@ -59,7 +59,7 @@ Instala .NET 10 SDK e Inno Setup 7 y ejecuta:
 powershell -File .\scripts\Build-Installer.ps1
 ```
 
-El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.3.6-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
+El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.3.7-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
 
 La versión 1.1.2 evita instancias e iconos duplicados y bloquea la instalación o desinstalación mientras el Manager siga abierto. La X oculta la ventana; usa **Salir** desde la bandeja para cerrar el programa antes de reparar o actualizar. El instalador verifica todos los archivos copiados mediante SHA-256. Puedes repetir esa comprobación con `powershell -File .\scripts\Test-InstallLayout.ps1 -Directory 'C:\Program Files\NextDNS Manager'`. El diagnóstico del error de arranque está en [docs/ARRANQUE_Y_BANDEJA.md](docs/ARRANQUE_Y_BANDEJA.md).
 
@@ -78,7 +78,7 @@ El botón **Registros de diagnóstico** muestra eventos sanitizados de la aplica
 
 El Manager consulta automáticamente la última versión estable de GitHub al iniciarse y cada 24 horas mientras permanece abierto en la bandeja. Al detectar un instalador más reciente muestra un aviso y un acceso en la ventana. También puedes elegir **Buscar actualizaciones** en el menú del icono de la bandeja. Una falla de red no bloquea el inicio ni la protección.
 
-El aviso abre la página oficial de Releases, donde puedes descargar el instalador y ejecutarlo. Windows pedirá permisos de administrador para actualizar el servicio. Cierra el Manager desde la bandeja antes de instalar. La búsqueda automática no descarga ni ejecuta archivos por su cuenta. El instalador actualmente no está firmado digitalmente y Windows puede mostrar una advertencia.
+Al detectar una versión nueva, el botón de la ventana descarga el instalador con progreso y compara su tamaño y SHA-256 con `SHA256SUMS.txt` de la misma publicación. Solo después de una confirmación explícita se cierra el Manager y se abre el instalador; Windows pedirá permisos de administrador. El checksum detecta cambios o daños durante la descarga, pero no autentica al publicador: si la cuenta, el repositorio o el workflow de GitHub se comprometen, el instalador y su checksum podrían reemplazarse juntos. El instalador actualmente no está firmado digitalmente y Windows puede mostrar una advertencia. La búsqueda automática solo detecta versiones; nunca descarga ni ejecuta archivos por su cuenta.
 
 Para publicar una versión, actualiza las versiones de los proyectos, `Build-Installer.ps1` y `NextDNSManager.iss`; integra los cambios en `main` y sube una etiqueta estable `vX.Y.Z` que coincida con esas versiones. El workflow `release.yml` compila el instalador para Windows, verifica el CLI, genera `SHA256SUMS.txt` y crea la Release con ambos archivos. El hash detecta errores de descarga; una firma digital de código requeriría un certificado de publicación.
 

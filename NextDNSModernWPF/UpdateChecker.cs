@@ -8,15 +8,24 @@ using System.Text.Json;
 
 namespace NextDNSModernWPF;
 
-internal sealed record UpdateInfo(string Version, Uri ReleaseUrl);
+internal sealed record ReleaseAsset(string Name, long Size, Uri DownloadUrl);
+internal sealed record UpdateInfo(
+    string Version,
+    Uri ReleaseUrl,
+    ReleaseAsset Installer,
+    ReleaseAsset Checksums);
 
 /// <summary>
-/// Checks GitHub's official latest-release API. This class never downloads or
-/// launches an installer, and it does not log response or machine data.
+/// Checks GitHub's official latest-release API. It validates exact release
+/// asset identities; downloading and launching are handled by UpdateInstaller.
 /// </summary>
 internal sealed class UpdateChecker : IDisposable
 {
     private const int MaximumResponseBytes = 128 * 1024;
+    internal const long MaximumInstallerBytes = 128L * 1024 * 1024;
+    internal const int MaximumChecksumsBytes = 4 * 1024;
+    internal const string RepositoryOwner = "agustinbracamonte";
+    internal const string RepositoryName = "NextDNS-Manager-WPF";
     private static readonly Uri LatestReleaseApiUri = new(
         "https://api.github.com/repos/agustinbracamonte/NextDNS-Manager-WPF/releases/latest",
         UriKind.Absolute);
@@ -84,14 +93,14 @@ internal sealed class UpdateChecker : IDisposable
             throw new InvalidDataException("La URL de la publicación de GitHub no es válida.");
 
         string version = releaseVersion.ToString();
-        if (!HasSetupAsset(root, version))
+        if (!TryReadReleaseAssets(root, tag, version, out ReleaseAsset? installer, out ReleaseAsset? checksums))
             return null;
 
         SemanticVersion currentVersion = GetCurrentVersion();
         if (releaseVersion.CompareTo(currentVersion) <= 0)
             return null;
 
-        return new UpdateInfo(version, releaseUrl!);
+        return new UpdateInfo(version, releaseUrl!, installer!, checksums!);
     }
 
     public void Dispose()
@@ -193,31 +202,82 @@ internal sealed class UpdateChecker : IDisposable
         return true;
     }
 
-    private static bool HasSetupAsset(JsonElement root, string version)
+    private static bool TryReadReleaseAssets(
+        JsonElement root,
+        string tag,
+        string version,
+        out ReleaseAsset? installer,
+        out ReleaseAsset? checksums)
     {
+        installer = null;
+        checksums = null;
         if (!root.TryGetProperty("assets", out JsonElement assets) || assets.ValueKind != JsonValueKind.Array)
             return false;
 
-        string expectedName = $"NextDNS-Manager-{version}-Setup-x64.exe";
+        string installerName = $"NextDNS-Manager-{version}-Setup-x64.exe";
+        const string checksumsName = "SHA256SUMS.txt";
         foreach (JsonElement asset in assets.EnumerateArray())
         {
-            if (asset.ValueKind != JsonValueKind.Object ||
-                !TryReadString(asset, "name", out string? name) ||
-                !string.Equals(name, expectedName, StringComparison.Ordinal) ||
-                !TryReadString(asset, "state", out string? state) ||
+            if (asset.ValueKind != JsonValueKind.Object || !TryReadString(asset, "name", out string? name))
+                continue;
+
+            bool isInstaller = string.Equals(name, installerName, StringComparison.Ordinal);
+            bool isChecksums = string.Equals(name, checksumsName, StringComparison.Ordinal);
+            if (!isInstaller && !isChecksums)
+                continue;
+
+            long maximumSize = isInstaller ? MaximumInstallerBytes : MaximumChecksumsBytes;
+            if (!TryReadString(asset, "state", out string? state) ||
                 !string.Equals(state, "uploaded", StringComparison.Ordinal) ||
                 !asset.TryGetProperty("size", out JsonElement sizeValue) ||
                 sizeValue.ValueKind != JsonValueKind.Number ||
                 !sizeValue.TryGetInt64(out long size) ||
-                size <= 0)
+                size <= 0 ||
+                size > maximumSize ||
+                !TryReadString(asset, "browser_download_url", out string? downloadUrl) ||
+                !IsTrustedAssetUrl(downloadUrl!, tag, name!, out Uri? uri))
             {
-                continue;
+                throw new InvalidDataException("La publicación contiene un instalador o manifiesto SHA-256 no válido.");
             }
 
-            return true;
+            var releaseAsset = new ReleaseAsset(name!, size, uri!);
+            if (isInstaller)
+            {
+                if (installer is not null)
+                    throw new InvalidDataException("La publicación contiene más de un instalador con el nombre esperado.");
+                installer = releaseAsset;
+            }
+            else
+            {
+                if (checksums is not null)
+                    throw new InvalidDataException("La publicación contiene más de un manifiesto SHA-256.");
+                checksums = releaseAsset;
+            }
         }
 
-        return false;
+        return installer is not null && checksums is not null;
+    }
+
+    private static bool IsTrustedAssetUrl(string value, string tag, string assetName, out Uri? assetUrl)
+    {
+        assetUrl = null;
+        if (!Uri.TryCreate(value, UriKind.Absolute, out Uri? candidate) ||
+            !string.Equals(candidate.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(candidate.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+            !candidate.IsDefaultPort ||
+            candidate.UserInfo.Length != 0 ||
+            candidate.Query.Length != 0 ||
+            candidate.Fragment.Length != 0)
+        {
+            return false;
+        }
+
+        string expectedPath = $"/{RepositoryOwner}/{RepositoryName}/releases/download/{tag}/{assetName}";
+        if (!string.Equals(candidate.AbsolutePath, expectedPath, StringComparison.Ordinal))
+            return false;
+
+        assetUrl = candidate;
+        return true;
     }
 
     private static bool TryReadString(JsonElement root, string propertyName, out string? value)
