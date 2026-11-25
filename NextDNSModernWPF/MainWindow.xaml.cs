@@ -47,9 +47,12 @@ namespace NextDNSModernWPF
         private Profile switchingToProfile;
         private readonly BrokerClient brokerClient = new BrokerClient();
         private readonly UpdateChecker updateChecker = new UpdateChecker();
+        private readonly UpdateInstaller updateInstaller = new UpdateInstaller();
+        private CancellationTokenSource updateDownloadCancellation;
         private DispatcherTimer updateTimer;
         private DispatcherTimer brokerStatusRetryTimer;
         private bool updateCheckInProgress;
+        private bool updateInstallInProgress;
         private UpdateInfo availableUpdate;
         private System.Windows.Forms.NotifyIcon _notifyIcon;
         private System.Windows.Forms.ContextMenuStrip _trayContextMenu;
@@ -179,6 +182,7 @@ namespace NextDNSModernWPF
         {
             if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
             if (brokerStatusRetryTimer != null) { brokerStatusRetryTimer.Stop(); brokerStatusRetryTimer.Tick -= BrokerStatusRetryTimer_Tick; }
+            try { updateDownloadCancellation?.Cancel(); } catch { }
             DetachThemeEvents();
             cmbProfiles.SelectionChanged -= CmbProfiles_SelectionChanged;
             DisposeTrayIcon();
@@ -316,7 +320,7 @@ namespace NextDNSModernWPF
                     return;
                 }
                 availableUpdate = update;
-                btnUpdate.Content = $"Disponible la versión {update.Version}";
+                btnUpdate.Content = $"Descargar e instalar la versión {update.Version}";
                 btnUpdate.Visibility = Visibility.Visible;
                 string marker = Path.Combine(appDataFolder, "last-update-notified.txt");
                 bool notified = false;
@@ -324,12 +328,15 @@ namespace NextDNSModernWPF
                 if (manual || !notified)
                 {
                     _notifyIcon.BalloonTipTitle = "Actualización disponible";
-                    _notifyIcon.BalloonTipText = $"NextDNS Manager {update.Version} ya está disponible. Haz clic para abrir GitHub.";
+                    _notifyIcon.BalloonTipText = $"NextDNS Manager {update.Version} ya está disponible. Haz clic para abrir la ventana y descargarla.";
                     _notifyIcon.ShowBalloonTip(8000);
                     try { File.WriteAllText(marker, update.Version); } catch (IOException) { } catch (UnauthorizedAccessException) { }
                 }
                 if (manual)
-                    System.Windows.MessageBox.Show($"La versión {update.Version} está disponible. Selecciona el aviso en la ventana para abrir las descargas.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
+                {
+                    RestoreFromTray();
+                    System.Windows.MessageBox.Show($"La versión {update.Version} está disponible. Usa el botón de actualización en la ventana para descargar y verificar el instalador.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
             }
             catch (Exception ex)
             {
@@ -337,24 +344,118 @@ namespace NextDNSModernWPF
                 if (manual && !_trayDisposed)
                     System.Windows.MessageBox.Show("No se pudo buscar actualizaciones. Comprueba tu conexión e inténtalo de nuevo.\n" + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
-            finally { updateCheckInProgress = false; }
+            finally
+            {
+                updateCheckInProgress = false;
+                UpdateTrayMenuState();
+            }
         }
 
-        private void BtnUpdate_Click(object sender, RoutedEventArgs e) => OpenReleases();
-        private void NotifyIcon_BalloonTipClicked(object sender, EventArgs e) { if (availableUpdate != null) OpenReleases(); }
+        private async void BtnUpdate_Click(object sender, RoutedEventArgs e) => await DownloadAndInstallUpdateAsync();
+        private void NotifyIcon_BalloonTipClicked(object sender, EventArgs e) { if (availableUpdate != null) RestoreFromTray(); }
 
-        private void OpenReleases()
+        private async Task DownloadAndInstallUpdateAsync()
         {
+            if (availableUpdate == null || updateInstallInProgress || _trayDisposed)
+                return;
+
+            UpdateInfo update = availableUpdate;
+            updateInstallInProgress = true;
+            updateDownloadCancellation = new CancellationTokenSource();
+            btnUpdate.IsEnabled = false;
+            btnUpdate.Content = $"Descargando {update.Version}…";
+            btnCancelUpdate.IsEnabled = true;
+            updateProgressPanel.Visibility = Visibility.Visible;
+            updateProgressBar.Value = 0;
+            UpdateTrayMenuState();
+
+            var progress = new Progress<UpdateDownloadProgress>(value =>
+            {
+                if (_trayDisposed)
+                    return;
+
+                updateProgressText.Text = value.TotalBytes > 0
+                    ? $"{value.Stage} {FormatBytes(value.BytesReceived)} de {FormatBytes(value.TotalBytes)}"
+                    : value.Stage;
+                updateProgressBar.IsIndeterminate = value.TotalBytes <= 0;
+                updateProgressBar.Value = value.TotalBytes > 0
+                    ? Math.Clamp(value.BytesReceived * 100d / value.TotalBytes, 0d, 100d)
+                    : 0;
+            });
+
             try
             {
-                Process.Start(new ProcessStartInfo("https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases") { UseShellExecute = true });
+                using UpdateInstaller.VerifiedInstaller installer = await updateInstaller.DownloadAndVerifyAsync(
+                    update,
+                    progress,
+                    updateDownloadCancellation.Token);
+
+                if (_trayDisposed)
+                    return;
+
+                btnCancelUpdate.IsEnabled = false;
+                updateProgressText.Text = "Volviendo a comprobar la publicación…";
+                installer.EnsureStillVerified();
+                UpdateLaunchCoordinator.HandoffResult handoff = await UpdateLaunchCoordinator.HandOffToUnelevatedHelperAsync(installer);
+                if (handoff == UpdateLaunchCoordinator.HandoffResult.Cancelled)
+                {
+                    updateProgressText.Text = "Instalación cancelada.";
+                    return;
+                }
+                if (handoff != UpdateLaunchCoordinator.HandoffResult.Ready)
+                {
+                    System.Windows.MessageBox.Show(
+                        this,
+                        "No se pudo preparar o volver a verificar el instalador. No se ejecutó ningún archivo.",
+                        "Actualización no iniciada",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                    return;
+                }
+
+                ExitApplication();
+            }
+            catch (OperationCanceledException)
+            {
+                if (!_trayDisposed)
+                    updateProgressText.Text = "Descarga cancelada.";
             }
             catch (Exception ex)
             {
-                DiagnosticLog.WriteManager(DiagnosticEvent.ReleasePageOpenFailure, ex);
-                System.Windows.MessageBox.Show("No se pudo abrir la página de versiones. " + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
+                DiagnosticLog.WriteManager(DiagnosticEvent.UpdateDownloadFailure, ex);
+                if (!_trayDisposed)
+                {
+                    updateProgressText.Text = "No se pudo verificar la descarga.";
+                    System.Windows.MessageBox.Show(
+                        this,
+                        "No se pudo descargar o verificar el instalador. No se ejecutó ningún archivo. Comprueba tu conexión e inténtalo de nuevo.",
+                        "Actualizaciones",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+            finally
+            {
+                updateDownloadCancellation?.Dispose();
+                updateDownloadCancellation = null;
+                updateInstallInProgress = false;
+                if (!_trayDisposed)
+                {
+                    btnUpdate.IsEnabled = availableUpdate != null;
+                    if (availableUpdate != null)
+                        btnUpdate.Content = $"Descargar e instalar la versión {availableUpdate.Version}";
+                    btnCancelUpdate.IsEnabled = false;
+                    updateProgressPanel.Visibility = Visibility.Collapsed;
+                    UpdateTrayMenuState();
+                }
             }
         }
+
+        private void BtnCancelUpdate_Click(object sender, RoutedEventArgs e) => updateDownloadCancellation?.Cancel();
+
+        private static string FormatBytes(long bytes) => bytes >= 1024 * 1024
+            ? $"{bytes / 1024d / 1024d:0.0} MB"
+            : $"{bytes / 1024d:0.0} KB";
 
         private async void BtnAction_Click(object sender, RoutedEventArgs e) => await PerformActionAsync();
 
@@ -725,7 +826,7 @@ namespace NextDNSModernWPF
             if (_trayRefreshStatusMenuItem != null)
                 _trayRefreshStatusMenuItem.Enabled = !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (_trayCheckUpdatesMenuItem != null)
-                _trayCheckUpdatesMenuItem.Enabled = !updateCheckInProgress;
+                _trayCheckUpdatesMenuItem.Enabled = !updateCheckInProgress && !updateInstallInProgress;
         }
 
         private string GetProfileDisplayName(string profileId)

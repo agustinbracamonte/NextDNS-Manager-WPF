@@ -334,7 +334,12 @@
                     </Grid>
                     <TextBlock Text="Made By MontFort" FontSize="12" Foreground="{DynamicResource NextBlue}" Margin="0,0,0,5"/>
 
-                    <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,18" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
+                    <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,12" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
+                    <StackPanel x:Name="updateProgressPanel" Visibility="Collapsed" Margin="0,0,0,18">
+                        <TextBlock x:Name="updateProgressText" Text="Preparando descarga…" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
+                        <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,3"/>
+                        <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" HorizontalAlignment="Left" Padding="0" Background="Transparent" Foreground="{DynamicResource TextSecondary}" BorderThickness="0" FontSize="11" Cursor="Hand" Click="BtnCancelUpdate_Click"/>
+                    </StackPanel>
 
                     <Border Background="{DynamicResource CardColor}" CornerRadius="15" Padding="20" Margin="0,0,0,20">
                         <StackPanel>

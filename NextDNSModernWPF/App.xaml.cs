@@ -16,6 +16,13 @@ namespace NextDNSModernWPF
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+            if (UpdateLaunchCoordinator.IsHelperInvocation(e.Args))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                _ = RunUpdateLauncherAsync(e.Args);
+                return;
+            }
+
             SessionEnding += App_SessionEnding;
             DispatcherUnhandledException += App_DispatcherUnhandledException;
             AppDomain.CurrentDomain.UnhandledException += App_UnhandledException;
@@ -57,6 +64,24 @@ namespace NextDNSModernWPF
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
                 Shutdown(1);
+            }
+        }
+
+        private async Task RunUpdateLauncherAsync(string[] arguments)
+        {
+            int exitCode = 1;
+            try
+            {
+                exitCode = await UpdateLaunchCoordinator.RunHelperAsync(arguments);
+            }
+            catch
+            {
+                // The interactive instance reports helper handoff failures before it exits.
+                exitCode = 1;
+            }
+            finally
+            {
+                Shutdown(exitCode);
             }
         }
 

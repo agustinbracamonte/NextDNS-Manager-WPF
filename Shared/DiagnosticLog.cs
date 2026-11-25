@@ -25,6 +25,7 @@ internal enum DiagnosticEvent
     UnobservedTaskException,
     AutostartConfigurationFailure,
     UpdateCheckFailure,
+    UpdateDownloadFailure,
     ReleasePageOpenFailure,
     BrokerActionFailure,
     ProfileSwitchFailure,
@@ -226,6 +227,7 @@ internal static class DiagnosticLog
         DiagnosticEvent.UnobservedTaskException => "Una tarea terminó con un error no observado.",
         DiagnosticEvent.AutostartConfigurationFailure => "No se pudo configurar el inicio automático.",
         DiagnosticEvent.UpdateCheckFailure => "No se pudo comprobar si hay actualizaciones.",
+        DiagnosticEvent.UpdateDownloadFailure => "No se pudo descargar o verificar una actualización.",
         DiagnosticEvent.ReleasePageOpenFailure => "No se pudo abrir la página de versiones.",
         DiagnosticEvent.BrokerActionFailure => "No se confirmó la operación solicitada.",
         DiagnosticEvent.ProfileSwitchFailure => "No se confirmó el cambio de perfil.",
@@ -252,7 +254,7 @@ internal static class DiagnosticLog
         DiagnosticEvent.ManagerStarted or DiagnosticEvent.ManagerShutdown or DiagnosticEvent.WindowsSessionEnding or
         DiagnosticEvent.ServiceStarted or DiagnosticEvent.ServiceStopRequested or DiagnosticEvent.ServiceStopped or
         DiagnosticEvent.ServiceShutdown => "INFO",
-        DiagnosticEvent.AutostartConfigurationFailure or DiagnosticEvent.UpdateCheckFailure or
+        DiagnosticEvent.AutostartConfigurationFailure or DiagnosticEvent.UpdateCheckFailure or DiagnosticEvent.UpdateDownloadFailure or
         DiagnosticEvent.ReleasePageOpenFailure or DiagnosticEvent.ProfilesLoadFailure or
         DiagnosticEvent.TrayCleanupFailure or DiagnosticEvent.ServiceProfileSwitchCleanupPending => "WARN",
         _ => "ERROR"

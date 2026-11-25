@@ -10,5 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\NextDNSModernWPF\UpdateChecker.cs" Link="UpdateChecker.cs" />
+    <Compile Include="..\..\NextDNSModernWPF\UpdateInstaller.cs" Link="UpdateInstaller.cs" />
   </ItemGroup>
 </Project>
