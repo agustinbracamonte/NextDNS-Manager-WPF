@@ -11,7 +11,6 @@ internal static class Program
     private const uint TokenDuplicate = 0x0002;
     private const uint TokenQuery = 0x0008;
     private const uint DisableMaxPrivilege = 0x00000001;
-    private const uint LuaToken = 0x00000004;
     private const uint GroupEnabled = 0x00000004;
     private const uint GroupUseForDenyOnly = 0x00000010;
     private const uint StartfUseShowWindow = 0x00000001;
@@ -149,7 +148,10 @@ internal static class Program
     private static SafeTokenHandle CreateNonElevatedToken(SafeTokenHandle currentToken, SafeLocalMemoryHandle administratorsSid)
     {
         var sidToDisable = new SidAndAttributes { Sid = administratorsSid.DangerousGetHandle(), Attributes = 0 };
-        if (!NativeMethods.CreateRestrictedToken(currentToken, DisableMaxPrivilege | LuaToken,
+        // These explicit restrictions remove runner privileges and make the
+        // Administrators group deny-only. The legacy LUA_TOKEN filter is unnecessary
+        // here and can affect native process startup on hosted runners.
+        if (!NativeMethods.CreateRestrictedToken(currentToken, DisableMaxPrivilege,
                 1, ref sidToDisable, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeTokenHandle restrictedToken))
             throw LastWin32Error("CreateRestrictedToken");
         return restrictedToken;

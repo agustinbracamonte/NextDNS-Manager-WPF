@@ -78,6 +78,17 @@ jobs:
             & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
             if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio se detuvo durante el intento rechazado.' }
           } finally { $mutex.Dispose() }
+      - name: Reinstalar con cada idioma del asistente
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.os == 'windows-2022' }}
+        shell: pwsh
+        run: |
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          foreach ($language in @('en', 'es', 'fr', 'pt', 'de')) {
+            $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LANG=$language" -Wait -PassThru
+            if ($process.ExitCode -ne 0) { throw "La reparación con idioma $language terminó con código $($process.ExitCode)." }
+            if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw "El servicio no quedó activo con idioma $language." }
+          }
+          & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
       - name: Desinstalar y comprobar limpieza
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
