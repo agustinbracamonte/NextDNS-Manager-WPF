@@ -1,0 +1,23 @@
+name: Proponer una mejora
+description: Contanos qué tarea querés resolver y cómo debería funcionar.
+title: "[Mejora]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Qué necesidad querés resolver
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Cómo te gustaría que funcionara
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas consideradas (opcional)
+    validations:
+      required: false

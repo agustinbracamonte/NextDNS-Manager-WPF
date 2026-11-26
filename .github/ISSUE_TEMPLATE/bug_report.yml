@@ -1,0 +1,49 @@
+name: Reportar un error
+description: Informá un problema reproducible sin incluir datos privados.
+title: "[Error]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **No incluyas claves API, IDs de perfil, dominios privados, IPs, registros DNS ni nombres de dispositivos.** Redactá esos datos de capturas y diagnósticos antes de adjuntarlos.
+  - type: input
+    id: app-version
+    attributes:
+      label: Versión de NextDNS Manager
+      placeholder: 2.2.0
+    validations:
+      required: true
+  - type: input
+    id: windows-version
+    attributes:
+      label: Versión de Windows
+      placeholder: Windows 11 24H2 x64
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Pasos para reproducir
+      description: Usá un perfil y datos de ejemplo; no compartas tu ID real.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Qué esperabas que ocurriera
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Qué ocurrió
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Diagnóstico sanitizado (opcional)
+      description: Eliminá claves, perfiles, dominios privados, IPs y dispositivos antes de pegar o adjuntar archivos.
+    validations:
+      required: false

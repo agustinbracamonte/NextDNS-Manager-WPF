@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Preguntas e ideas generales
+    url: https://github.com/agustinbracamonte/NextDNS-Manager-WPF/discussions
+    about: Usá Discussions para preguntas y comentarios que no sean errores reproducibles.
