@@ -32,6 +32,7 @@ jobs:
           if ($line -notmatch '^([0-9a-f]{64})  NextDNS-Manager-2\.3\.0-Setup-x64\.exe$') { throw 'Manifiesto inválido.' }
           if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'Hash incorrecto.' }
       - name: Instalar y verificar servicio y archivos
+        id: install
         shell: pwsh
         run: |
           $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
@@ -43,11 +44,14 @@ jobs:
           if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
           if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.0.0') { throw 'Versión instalada incorrecta.' }
       - name: Consultar estado mediante cliente normal
+        id: status
+        continue-on-error: true
         shell: pwsh
         run: |
           dotnet run --project tests/BrokerProbe/BrokerProbe.csproj -c Release -- --status
           if ($LASTEXITCODE -ne 0) { throw 'El cliente no pudo consultar el servicio instalado.' }
       - name: Reparar y volver a verificar
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
           $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
@@ -56,9 +60,14 @@ jobs:
           & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
           if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar.' }
       - name: Desinstalar y comprobar limpieza
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
           $uninstaller = Join-Path $env:ProgramFiles 'NextDNS Manager\unins000.exe'
           $process = Start-Process $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "La desinstalación terminó con código $($process.ExitCode)." }
           if (Get-Service NextDNSManagerBroker -ErrorAction SilentlyContinue) { throw 'El servicio continúa registrado.' }
+      - name: Informar si faltó comprobar el cliente sin elevar
+        if: ${{ !cancelled() && steps.status.outcome == 'failure' }}
+        shell: pwsh
+        run: throw 'No se pudo comprobar la consulta del cliente sin elevar; revisa el paso de estado.'
