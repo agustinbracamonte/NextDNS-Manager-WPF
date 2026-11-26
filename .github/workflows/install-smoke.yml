@@ -1,0 +1,64 @@
+name: Instalación y reparación en Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    name: Instalar, reparar y desinstalar (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Descargar y verificar la versión publicada 2.3.0
+        shell: pwsh
+        run: |
+          $base = 'https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases/download/v2.3.0'
+          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
+          $checksum = Join-Path $env:RUNNER_TEMP 'nextdns-checksums.txt'
+          Invoke-WebRequest "$base/NextDNS-Manager-2.3.0-Setup-x64.exe" -OutFile $setup
+          Invoke-WebRequest "$base/SHA256SUMS.txt" -OutFile $checksum
+          $line = (Get-Content -LiteralPath $checksum -Raw).Trim()
+          if ($line -notmatch '^([0-9a-f]{64})  NextDNS-Manager-2\.3\.0-Setup-x64\.exe$') { throw 'Manifiesto inválido.' }
+          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'Hash incorrecto.' }
+      - name: Instalar y verificar servicio y archivos
+        shell: pwsh
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
+          $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
+          $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "El instalador terminó con código $($process.ExitCode)." }
+          & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
+          $service = Get-Service NextDNSManagerBroker -ErrorAction Stop
+          if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
+          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.0.0') { throw 'Versión instalada incorrecta.' }
+      - name: Consultar estado mediante cliente normal
+        shell: pwsh
+        run: |
+          dotnet run --project tests/BrokerProbe/BrokerProbe.csproj -c Release -- --status
+          if ($LASTEXITCODE -ne 0) { throw 'El cliente no pudo consultar el servicio instalado.' }
+      - name: Reparar y volver a verificar
+        shell: pwsh
+        run: |
+          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
+          $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "La reparación terminó con código $($process.ExitCode)." }
+          & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
+          if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar.' }
+      - name: Desinstalar y comprobar limpieza
+        shell: pwsh
+        run: |
+          $uninstaller = Join-Path $env:ProgramFiles 'NextDNS Manager\unins000.exe'
+          $process = Start-Process $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "La desinstalación terminó con código $($process.ExitCode)." }
+          if (Get-Service NextDNSManagerBroker -ErrorAction SilentlyContinue) { throw 'El servicio continúa registrado.' }
