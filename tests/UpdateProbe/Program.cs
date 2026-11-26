@@ -25,6 +25,7 @@ internal static class Program
             await TestUntrustedAssetUrlsAsync();
             TestChecksumManifestValidation();
             TestDownloadRedirectValidation();
+            TestAutomaticInstallerLaunch();
             TestHelperBundleCopyAndCleanup();
             await TestDownloaderFollowsOnlyAllowedRedirectsAsync();
             await TestRequestUsesFixedEndpointAndHeadersAsync();
@@ -37,6 +38,14 @@ internal static class Program
             Console.Error.WriteLine("FAIL: " + exception);
             return 1;
         }
+    }
+
+    private static void TestAutomaticInstallerLaunch()
+    {
+        var info = UpdateInstaller.CreateAutomaticInstallerStartInfo(@"C:\example\installer.exe", @"C:\example");
+        Check(info.UseShellExecute && info.Verb == "runas", "Automatic installation still asks Windows for elevation.");
+        Check(info.ArgumentList.SequenceEqual(new[] { "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" }),
+            "Automatic installation avoids the wizard and does not restart Windows.");
     }
 
     private static async Task TestVersionEligibilityAsync()

@@ -66,7 +66,7 @@ No ejecutes `--cycle` en producción como una prueba de build. Usa una máquina 
 .\scripts\Build-Installer.ps1
 ```
 
-El script localiza `dotnet` e `ISCC.exe`, requiere Inno Setup 6.6+, prepara el CLI, publica Manager/servicio autocontenidos para `win-x64`, verifica el CLI, crea `install-files.sha256`, ejecuta `Test-InstallLayout.ps1` y compila con Inno Setup. El instalador sale en `artifacts\NextDNS-Manager-2.1.0-Setup-x64.exe`.
+El script localiza `dotnet` e `ISCC.exe`, requiere Inno Setup 6.6+, prepara el CLI, publica Manager/servicio autocontenidos para `win-x64`, verifica el CLI, crea `install-files.sha256`, ejecuta `Test-InstallLayout.ps1` y compila con Inno Setup. El instalador sale en `artifacts\NextDNS-Manager-2.2.0-Setup-x64.exe`.
 
 La verificación de una carpeta ya publicada es:
 

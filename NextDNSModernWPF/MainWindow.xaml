@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:NextDNSModernWPF"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-        Title="NextDNS Manager 2.1" Height="560" Width="800" MinHeight="560" MinWidth="680"
+        Title="NextDNS Manager 2.2" Height="560" Width="800" MinHeight="560" MinWidth="680"
         WindowStartupLocation="Manual" Loaded="MainWindow_ApplyResponsiveSize"
         SourceInitialized="MainWindow_BackdropSourceInitialized"
         ResizeMode="CanResize"
@@ -851,6 +851,17 @@
                     <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
                     <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled"/>
                     <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ListBox">
+                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                                    <ScrollViewer Focusable="False" CanContentScroll="True" HorizontalScrollBarVisibility="{TemplateBinding ScrollViewer.HorizontalScrollBarVisibility}" VerticalScrollBarVisibility="{TemplateBinding ScrollViewer.VerticalScrollBarVisibility}">
+                                        <ItemsPresenter/>
+                                    </ScrollViewer>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
                     <Setter Property="ItemContainerStyle">
                         <Setter.Value>
                             <Style TargetType="ListBoxItem">
@@ -1031,6 +1042,7 @@
             </Grid.Resources>
             <Grid.RowDefinitions>
                 <RowDefinition Height="58"/>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -1042,7 +1054,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="False">
                     <Path Data="M10,1 L18,4 L18,10 C18,15 14,19 10,22 C6,19 2,15 2,10 L2,4 Z" Width="22" Height="24" Stretch="Fill" Stroke="{DynamicResource NextBlue}" StrokeThickness="2" Margin="0,0,10,0"/>
-                    <TextBlock Text="NextDNS Manager 2.1" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Text="NextDNS Manager 2.2" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <ComboBox x:Name="cmbTheme" Grid.Column="1" HorizontalAlignment="Center" Width="146" Height="32" VerticalAlignment="Center" FontSize="13" ToolTip="Apariencia de la aplicación" WindowChrome.IsHitTestVisibleInChrome="True">
                     <ComboBoxItem Content="Automático" Tag="System" Style="{StaticResource DarkItemStyle}"/>
@@ -1059,7 +1071,16 @@
                 </StackPanel>
             </Grid>
 
-            <TabControl x:Name="mainTabs" Grid.Row="1" Style="{StaticResource SectionTabControl}" ItemContainerStyle="{StaticResource SectionTabItem}" Margin="18,0,18,14" SelectedIndex="0">
+                        <StackPanel Grid.Row="1" Margin="18,0,18,6">
+                            <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,4" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
+                            <StackPanel x:Name="updateProgressPanel" Visibility="Collapsed" Margin="0,0,0,8">
+                                <TextBlock x:Name="updateProgressText" Text="Preparando descarga…" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
+                                <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,5"/>
+                                <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" Style="{StaticResource UpdateCancelBtnStyle}" HorizontalAlignment="Left" Height="24" Click="BtnCancelUpdate_Click"/>
+                            </StackPanel>
+                        </StackPanel>
+
+            <TabControl x:Name="mainTabs" Grid.Row="2" Style="{StaticResource SectionTabControl}" ItemContainerStyle="{StaticResource SectionTabItem}" Margin="18,0,18,14" SelectedIndex="0">
                 <TabItem>
                     <TabItem.Header>
                         <StackPanel Orientation="Horizontal">
@@ -1419,14 +1440,7 @@
                         <Grid Grid.Row="3" Margin="0,8,0,0">
                             <TextBlock x:Name="lblActivityMessage" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="2,0" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                         </Grid>
-                        <StackPanel Grid.Row="4" Margin="0,12,0,0">
-                            <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,12" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
-                            <StackPanel x:Name="updateProgressPanel" Visibility="Collapsed" Margin="0,0,0,8">
-                                <TextBlock x:Name="updateProgressText" Text="Preparando descarga…" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
-                                <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,5"/>
-                                <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" Style="{StaticResource UpdateCancelBtnStyle}" HorizontalAlignment="Left" Height="24" Click="BtnCancelUpdate_Click"/>
-                            </StackPanel>
-                        </StackPanel>
+
                     </Grid>
                     </ScrollViewer>
                 </TabItem>

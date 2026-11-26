@@ -666,6 +666,20 @@ internal sealed class UpdateInstaller : IDisposable
         internal uint FileIndexLow;
     }
 
+    internal static ProcessStartInfo CreateAutomaticInstallerStartInfo(string path, string workingDirectory)
+    {
+        var startInfo = new ProcessStartInfo(path)
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+            WorkingDirectory = workingDirectory
+        };
+        startInfo.ArgumentList.Add("/VERYSILENT");
+        startInfo.ArgumentList.Add("/SUPPRESSMSGBOXES");
+        startInfo.ArgumentList.Add("/NORESTART");
+        return startInfo;
+    }
+
     internal sealed class VerifiedInstaller : IDisposable
     {
         private FileStream? _file;
@@ -711,12 +725,7 @@ internal sealed class UpdateInstaller : IDisposable
 
         internal ProcessStartInfo CreateElevatedInstallerStartInfo()
         {
-            return new ProcessStartInfo(Path)
-            {
-                UseShellExecute = true,
-                Verb = "runas",
-                WorkingDirectory = StagingDirectory
-            };
+            return CreateAutomaticInstallerStartInfo(Path, StagingDirectory);
         }
 
         internal void EnsureStillVerified()

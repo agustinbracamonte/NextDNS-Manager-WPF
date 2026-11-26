@@ -41,7 +41,7 @@ Requisitos: .NET 10 SDK, Inno Setup 6.6 o posterior y conexión para preparar el
 .\scripts\Build-Installer.ps1
 ```
 
-El script crea `artifacts\NextDNS-Manager-2.1.0-Setup-x64.exe`, prepara el CLI v1.50.2 con hashes fijados, publica el Manager y servicio `win-x64` autocontenidos, genera `install-files.sha256`, verifica el layout e invoca Inno Setup.
+El script crea `artifacts\NextDNS-Manager-2.2.0-Setup-x64.exe`, prepara el CLI v1.50.2 con hashes fijados, publica el Manager y servicio `win-x64` autocontenidos, genera `install-files.sha256`, verifica el layout e invoca Inno Setup.
 
 Para comprobar la instalación tras copiarla:
 

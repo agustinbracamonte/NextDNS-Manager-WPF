@@ -319,6 +319,7 @@ namespace NextDNSModernWPF
             {
                 UpdateInfo update = await updateChecker.CheckAsync();
                 if (_trayDisposed) return;
+                if (updateTimer != null) updateTimer.Interval = TimeSpan.FromHours(24);
                 if (update == null)
                 {
                     if (manual) System.Windows.MessageBox.Show("No hay una versión más reciente publicada.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -345,6 +346,7 @@ namespace NextDNSModernWPF
             }
             catch (Exception ex)
             {
+                if (updateTimer != null) updateTimer.Interval = TimeSpan.FromMinutes(15);
                 DiagnosticLog.WriteManager(DiagnosticEvent.UpdateCheckFailure, ex);
                 if (manual && !_trayDisposed)
                     System.Windows.MessageBox.Show("No se pudo buscar actualizaciones. Comprueba tu conexión e inténtalo de nuevo.\n" + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);

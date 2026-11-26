@@ -146,7 +146,7 @@ internal static class UpdateLaunchCoordinator
 
             string confirmation =
                 $"La versión {verifiedInstaller.Version} está lista. El instalador no tiene firma digital; SHA-256 solo comprueba que coincide con SHA256SUMS y no autentica al publicador.\n\n" +
-                "Si continúas, NextDNS Manager se cerrará y Windows pedirá permisos para ejecutar el instalador. ¿Continuar?";
+                "Si continúas, NextDNS Manager se cerrará, Windows pedirá permisos y la actualización se instalará automáticamente. ¿Continuar?";
             MessageBoxResult confirmationResult = System.Windows.MessageBox.Show(
                 confirmation,
                 "Confirmar instalación de NextDNS Manager",
@@ -190,6 +190,10 @@ internal static class UpdateLaunchCoordinator
                     "Actualización de NextDNS Manager",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
+                TryRestartInstalledManager();
+            }
+            else
+            {
                 TryRestartInstalledManager();
             }
             return installerProcess.ExitCode;
