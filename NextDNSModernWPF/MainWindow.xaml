@@ -3,24 +3,27 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:NextDNSModernWPF"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-        Title="NextDNS Manager 2.0" Height="560" Width="800" MinHeight="560" MinWidth="680"
+        Title="NextDNS Manager 2.1" Height="560" Width="800" MinHeight="560" MinWidth="680"
         WindowStartupLocation="Manual" Loaded="MainWindow_ApplyResponsiveSize"
         SourceInitialized="MainWindow_BackdropSourceInitialized"
         ResizeMode="CanResize"
-        
+
         AllowsTransparency="{x:Static local:BackdropRuntimePolicy.UseLayeredWindow}"
         WindowStyle="None"
-        Background="Transparent">
+        Background="Transparent" PreviewMouseWheel="WindowMargin_MouseWheel">
 
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="56"
                       GlassFrameThickness="{x:Static local:BackdropRuntimePolicy.GlassFrameThickness}"
-                      CornerRadius="0" 
+                      CornerRadius="0"
                       ResizeBorderThickness="4"
                       UseAeroCaptionButtons="False"/>
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <Style x:Key="{x:Static SystemParameters.FocusVisualStyleKey}" TargetType="Control">
+            <Setter Property="Template"><Setter.Value><ControlTemplate><Border BorderBrush="{DynamicResource FocusBorderColor}" BorderThickness="1" CornerRadius="4"/></ControlTemplate></Setter.Value></Setter>
+        </Style>
         <Style x:Key="WindowBtnStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TextSecondary}"/>
@@ -276,6 +279,56 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+        </Style>
+
+        <Style x:Key="DomainSwitchButton" TargetType="Button">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="Cambiar estado del dominio"/>
+            <Setter Property="AutomationProperties.Name" Value="Cambiar estado del dominio"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid Width="38" Height="22">
+                            <Border x:Name="SwitchTrack" Background="{DynamicResource ToggleOffBackground}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="11"/>
+                            <Ellipse x:Name="SwitchThumb" Width="16" Height="16" HorizontalAlignment="Left" Margin="3,0,0,0" Fill="{DynamicResource TextSecondary}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <DataTrigger Binding="{Binding Active}" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="{DynamicResource NextBlue}"/>
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource NextBlue}"/>
+                                <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="SwitchThumb" Property="Margin" Value="0,0,3,0"/>
+                                <Setter TargetName="SwitchThumb" Property="Fill" Value="White"/>
+                            </DataTrigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource FocusBorderColor}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
+                                <Setter Property="Opacity" Value="0.55"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Active}" Value="True">
+                    <Setter Property="ToolTip" Value="Desactivar dominio"/>
+                    <Setter Property="AutomationProperties.Name" Value="Desactivar dominio"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Active}" Value="False">
+                    <Setter Property="ToolTip" Value="Activar dominio"/>
+                    <Setter Property="AutomationProperties.Name" Value="Activar dominio"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
 
         <Style x:Key="PauseContextMenuItem" TargetType="MenuItem">
@@ -989,7 +1042,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="False">
                     <Path Data="M10,1 L18,4 L18,10 C18,15 14,19 10,22 C6,19 2,15 2,10 L2,4 Z" Width="22" Height="24" Stretch="Fill" Stroke="{DynamicResource NextBlue}" StrokeThickness="2" Margin="0,0,10,0"/>
-                    <TextBlock Text="NextDNS Manager 2.0" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Text="NextDNS Manager 2.1" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <ComboBox x:Name="cmbTheme" Grid.Column="1" HorizontalAlignment="Center" Width="146" Height="32" VerticalAlignment="Center" FontSize="13" ToolTip="Apariencia de la aplicación" WindowChrome.IsHitTestVisibleInChrome="True">
                     <ComboBoxItem Content="Automático" Tag="System" Style="{StaticResource DarkItemStyle}"/>
@@ -1079,7 +1132,7 @@
                         <Grid Grid.Row="5" Margin="0,10,0,0">
                             <Border Height="1" Background="{DynamicResource BorderColor}" VerticalAlignment="Top"/>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,8,0,0">
-                                <Ellipse Width="6" Height="6" Fill="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <Ellipse x:Name="infoIndicator" Width="6" Height="6" Fill="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                 <TextBlock x:Name="lblInfo" Text="Verificando servicio..." FontSize="13" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
@@ -1103,7 +1156,7 @@
                             <TextBlock Text="Listas" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
-                    <ScrollViewer x:Name="listsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <ScrollViewer x:Name="listsScrollViewer" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <StackPanel>
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
@@ -1147,13 +1200,9 @@
                                                                 </Grid>
                                                                 <TextBlock Text="{Binding Id}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
-                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                                <TextBlock Text="Activo" FontSize="11" Foreground="{DynamicResource StatusProtected}">
-                                                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Active}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                                                </TextBlock>
-                                                                <TextBlock Text="Desactivado" FontSize="11" Foreground="{DynamicResource TextSecondary}">
-                                                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Active}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                                                </TextBlock>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                                <Button Style="{StaticResource DomainSwitchButton}" Margin="8,0,0,0" Click="AllowedDomainSwitch_Click"/>
+                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="Eliminar este dominio" AutomationProperties.Name="Eliminar dominio" Click="AllowedDomainRemove_Click"/>
                                                             </StackPanel>
                                                         </Grid>
                                                     </DataTemplate>
@@ -1163,12 +1212,6 @@
                                                 <TextBlock Text="Los dominios permitidos aparecerán aquí." FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
                                         </Grid>
-                                        <Expander Grid.Row="3" Header="Acciones del dominio seleccionado" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,3,0,0">
-                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                                <Button x:Name="btnToggleAllowedDomain" Content="Estado" MinWidth="90" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
-                                                <Button x:Name="btnRemoveAllowedDomain" Content="Eliminar" MinWidth="80" Height="28" Margin="6,0,0,0" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
-                                            </StackPanel>
-                                        </Expander>
                                     </Grid>
                                 </Border>
 
@@ -1177,7 +1220,7 @@
                                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                         <Grid Margin="2,0,2,6">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                        <Grid Width="18" Height="18" VerticalAlignment="Center"><Ellipse Stroke="{DynamicResource StatusAttention}" StrokeThickness="1.5"/><Path Data="M5,5 L13,13 M13,5 L5,13" Stroke="{DynamicResource StatusAttention}" StrokeThickness="1.6"/></Grid>
+                                        <Grid Width="18" Height="18" VerticalAlignment="Center"><Ellipse Stroke="{DynamicResource NextRed}" StrokeThickness="1.5"/><Path Data="M5,5 L13,13 M13,5 L5,13" Stroke="{DynamicResource NextRed}" StrokeThickness="1.6"/></Grid>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                                 <TextBlock Text="Bloqueados" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
                                             <TextBlock Text="(" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
@@ -1205,13 +1248,9 @@
                                                                 </Grid>
                                                                 <TextBlock Text="{Binding Id}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                                             </StackPanel>
-                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                                                                <TextBlock Text="Activo" FontSize="11" Foreground="{DynamicResource StatusProtected}">
-                                                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Active}" Value="True"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                                                </TextBlock>
-                                                                <TextBlock Text="Desactivado" FontSize="11" Foreground="{DynamicResource TextSecondary}">
-                                                                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed"/><Style.Triggers><DataTrigger Binding="{Binding Active}" Value="False"><Setter Property="Visibility" Value="Visible"/></DataTrigger></Style.Triggers></Style></TextBlock.Style>
-                                                                </TextBlock>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
+                                                                <Button Style="{StaticResource DomainSwitchButton}" Margin="8,0,0,0" Click="BlockedDomainSwitch_Click"/>
+                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="Eliminar este dominio" AutomationProperties.Name="Eliminar dominio" Click="BlockedDomainRemove_Click"/>
                                                             </StackPanel>
                                                         </Grid>
                                                     </DataTemplate>
@@ -1221,12 +1260,6 @@
                                                 <TextBlock Text="Los dominios bloqueados aparecerán aquí." FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
                                         </Grid>
-                                        <Expander Grid.Row="3" Header="Acciones del dominio seleccionado" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,3,0,0">
-                                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                                <Button x:Name="btnToggleBlockedDomain" Content="Estado" MinWidth="90" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
-                                                <Button x:Name="btnRemoveBlockedDomain" Content="Eliminar" MinWidth="80" Height="28" Margin="6,0,0,0" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
-                                            </StackPanel>
-                                        </Expander>
                                     </Grid>
                                 </Border>
                             </StackPanel>
@@ -1269,7 +1302,7 @@
                             <TextBlock Text="Actividad" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
-                    <ScrollViewer x:Name="activityScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <ScrollViewer x:Name="activityScrollViewer" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                     <Grid x:Name="activityPage" MinHeight="520">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
@@ -1295,9 +1328,10 @@
                         </Grid>
                         <StackPanel Grid.Row="1" Margin="0,0,0,8">
                             <Grid Margin="0,0,0,4">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Button x:Name="btnToggleActivityStream" Content="En vivo" Style="{StaticResource LiveStreamButton}" IsEnabled="False" ToolTip="Ver consultas nuevas mientras Actividad esté abierta"/>
-                                <TextBlock Grid.Column="2" Text="Últimas consultas" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <Button x:Name="btnToggleActivityStream" Content="En vivo" Style="{StaticResource LiveStreamButton}" FocusVisualStyle="{x:Null}" IsEnabled="False" ToolTip="Ver consultas nuevas mientras Actividad esté abierta"/>
+                                <Button x:Name="btnBlockedOnly" Grid.Column="1" Content="Solo bloqueados" Margin="8,0,0,0" Style="{StaticResource QuietActionButton}" FocusVisualStyle="{x:Null}" Click="BlockedOnly_Click" ToolTip="Mostrar solo consultas bloqueadas"/>
+                                <TextBlock Grid.Column="3" Text="Últimas consultas" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
                             </Grid>
                             <Expander Header="Filtros adicionales" Foreground="{DynamicResource TextSecondary}" FontSize="12">
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="8" Margin="0,4,0,8">
@@ -1308,6 +1342,13 @@
                                             <ComboBox x:Name="cmbActivityStatus" Grid.Column="2" Width="150" Height="34" IsEnabled="False" ToolTip="Filtrar por resultado"/>
                                             <Button x:Name="btnRefreshActivity" Grid.Column="4" Content="Aplicar filtros" Style="{StaticResource QuietActionButton}" IsEnabled="False" IsEnabledChanged="ActivityRefreshButton_IsEnabledChanged"/>
                                         </Grid>
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <TextBlock Text="Período:" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <Button Content="Todo" Tag="0" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
+                                            <Button Content="24 horas" Tag="1" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
+                                            <Button Content="7 días" Tag="7" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}"/>
+                                        </StackPanel>
+                                        <Expander Header="Rango personalizado" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,0">
                                         <WrapPanel Margin="0,8,0,0" Loaded="ActivityDateControls_Loaded">
                                             <StackPanel Width="320" Margin="0,0,12,8">
                                                 <TextBlock Text="Desde · hora local" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="1,0,0,5"/>
@@ -1330,6 +1371,7 @@
                                                 </Grid>
                                             </StackPanel>
                                         </WrapPanel>
+                                        </Expander>
                                         <TextBlock x:Name="lblActivityDateValidation" Foreground="{DynamicResource StatusAttention}" FontSize="12" TextWrapping="Wrap" Margin="1,0,0,0"/>
                                         <TextBox x:Name="txtActivityFrom" Visibility="Collapsed" IsEnabledChanged="ActivityDateEnabledChanged" TextChanged="LegacyActivityDate_TextChanged"/>
                                         <TextBox x:Name="txtActivityTo" Visibility="Collapsed" IsEnabledChanged="ActivityDateEnabledChanged" TextChanged="LegacyActivityDate_TextChanged"/>
@@ -1344,55 +1386,26 @@
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="8,6">
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="104"/><ColumnDefinition Width="*"/><ColumnDefinition Width="136"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Hora" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
-                                        <TextBlock Grid.Column="1" Text="Dominio" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
-                                        <TextBlock Grid.Column="2" Text="Estado" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
+                                        <TextBlock Text="Dominio" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
+
+                                        <TextBlock Grid.Column="2" Text="Dispositivo y hora" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
                                     </Grid>
                                 </Border>
                                 <Grid Grid.Row="1">
                                     <ListBox x:Name="lstDnsActivity" Style="{StaticResource ListPreviewBox}">
                                         <ListBox.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid MinHeight="36">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="104"/><ColumnDefinition Width="*"/><ColumnDefinition Width="136"/></Grid.ColumnDefinitions>
-                                                    <TextBlock Text="{Binding Timestamp, StringFormat={}{0:HH:mm:ss}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding Domain}" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                        <Grid Width="16" Height="16" Margin="0,0,8,0">
-                                                            <Ellipse x:Name="StatusRing" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.2"/>
-                                                            <Path x:Name="StatusMark" Data="M3,8 L13,8" Stroke="{DynamicResource TextSecondary}" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                        </Grid>
-                                                        <TextBlock x:Name="StatusLabel" Text="{Binding Status}" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
-                                                    </StackPanel>
-                                                </Grid>
-                                                <DataTemplate.Triggers>
-                                                    <DataTrigger Binding="{Binding Status}" Value="allowed">
-                                                        <Setter TargetName="StatusRing" Property="Stroke" Value="{DynamicResource StatusProtected}"/>
-                                                        <Setter TargetName="StatusMark" Property="Data" Value="M3,8 L6,11 L13,3"/>
-                                                        <Setter TargetName="StatusMark" Property="Stroke" Value="{DynamicResource StatusProtected}"/>
-                                                        <Setter TargetName="StatusLabel" Property="Text" Value="Permitido"/>
-                                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource StatusProtected}"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="blocked">
-                                                        <Setter TargetName="StatusRing" Property="Stroke" Value="{DynamicResource NextRed}"/>
-                                                        <Setter TargetName="StatusMark" Property="Data" Value="M4,4 L12,12 M12,4 L4,12"/>
-                                                        <Setter TargetName="StatusMark" Property="Stroke" Value="{DynamicResource NextRed}"/>
-                                                        <Setter TargetName="StatusLabel" Property="Text" Value="Bloqueado"/>
-                                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource NextRed}"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="error">
-                                                        <Setter TargetName="StatusRing" Property="Stroke" Value="{DynamicResource StatusAttention}"/>
-                                                        <Setter TargetName="StatusMark" Property="Data" Value="M8,3 L8,9 M8,12 L8,13"/>
-                                                        <Setter TargetName="StatusMark" Property="Stroke" Value="{DynamicResource StatusAttention}"/>
-                                                        <Setter TargetName="StatusLabel" Property="Text" Value="Error"/>
-                                                        <Setter TargetName="StatusLabel" Property="Foreground" Value="{DynamicResource StatusAttention}"/>
-                                                    </DataTrigger>
-                                                    <DataTrigger Binding="{Binding Status}" Value="default">
-                                                        <Setter TargetName="StatusRing" Property="Stroke" Value="{DynamicResource TextSecondary}"/>
-                                                        <Setter TargetName="StatusMark" Property="Data" Value="M3,8 L13,8"/>
-                                                        <Setter TargetName="StatusLabel" Property="Text" Value="Predeterminado"/>
-                                                    </DataTrigger>
-                                                </DataTemplate.Triggers>
+                                                <Border x:Name="LogRow" BorderBrush="{DynamicResource BorderColor}" BorderThickness="3,0,0,1" Padding="10,7">
+                                                    <Grid MinHeight="32">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding Domain}" FontSize="13" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                                        <StackPanel Grid.Column="1" HorizontalAlignment="Right" Margin="12,0,0,0">
+                                                            <TextBlock Text="{Binding Device.Name, TargetNullValue=Dispositivo no identificado}" Foreground="{DynamicResource TextPrimary}" FontSize="12" HorizontalAlignment="Right"/>
+                                                            <TextBlock Text="{Binding TimestampLocal, StringFormat={}{0:dd/MM HH:mm:ss}}" Foreground="{DynamicResource TextSecondary}" FontSize="11" HorizontalAlignment="Right"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                                <DataTemplate.Triggers><DataTrigger Binding="{Binding Status}" Value="blocked"><Setter TargetName="LogRow" Property="BorderBrush" Value="{DynamicResource NextRed}"/></DataTrigger></DataTemplate.Triggers>
                                             </DataTemplate>
                                         </ListBox.ItemTemplate>
                                     </ListBox>
@@ -1454,6 +1467,35 @@
                                 </Grid>
                             </Border>
 
+                            <Expander x:Name="expLocalProfiles" Header="Perfiles locales" Foreground="{DynamicResource TextSecondary}" FontSize="12" IsExpanded="True" Margin="0,0,0,8">
+                                <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10" Margin="0,8,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="Los perfiles se guardan localmente y se usan desde Inicio. Agregar uno no cambia el perfil activo." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <ListBox x:Name="lstSavedProfiles" ItemsSource="{Binding ItemsSource, ElementName=cmbProfiles}" SelectedItem="{Binding SelectedItem, ElementName=cmbProfiles, Mode=TwoWay}" Style="{StaticResource ListPreviewBox}" MaxHeight="112">
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                                                        <TextBlock Text="{Binding ID}" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                        <Grid Margin="0,8,0,8">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
+                                            <TextBox x:Name="txtName" Grid.Column="0" Tag="Nombre del perfil" MaxLength="80" ToolTip="Escribe un nombre obligatorio para identificar el perfil." AutomationProperties.Name="Nombre del perfil"/>
+                                            <TextBox x:Name="txtID" Grid.Column="2" Tag="ID (6 hex)" MaxLength="6" ToolTip="ID NextDNS de exactamente 6 caracteres hexadecimales." AutomationProperties.Name="ID NextDNS, seis caracteres hexadecimales"/>
+                                        </Grid>
+                                        <TextBlock x:Name="lblProfileMessage" Text="ID de seis caracteres hexadecimales." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Button x:Name="btnAddLocalProfile" Grid.Column="0" Content="Agregar perfil" Height="32" Click="BtnAdd_Click" Style="{StaticResource QuietActionButton}" HorizontalAlignment="Stretch" AutomationProperties.Name="Agregar perfil local"/>
+                                            <Button x:Name="btnDeleteLocalProfile" Grid.Column="2" Content="Eliminar seleccionado" Height="32" Click="BtnDel_Click" Style="{StaticResource OutlineDestructiveButton}"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </Expander>
+
                             <StackPanel Margin="0,0,0,8">
                                     <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8">
                                         <CheckBox x:Name="chkReportName" Style="{StaticResource SettingsToggle}" IsChecked="True" Height="50">
@@ -1471,44 +1513,18 @@
                                             </StackPanel>
                                         </CheckBox>
                                     </Border>
-                                    <Expander x:Name="expLocalProfiles" Header="Perfiles locales" Foreground="{DynamicResource TextSecondary}" FontSize="12" IsExpanded="False" Margin="0,8,0,8">
-                                        <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10" Margin="0,8,0,0">
-                                            <StackPanel>
-                                                <TextBlock Text="Los perfiles se guardan localmente y se usan desde Inicio. Agregar uno no cambia el perfil activo." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                                <ListBox x:Name="lstSavedProfiles" ItemsSource="{Binding ItemsSource, ElementName=cmbProfiles}" SelectedItem="{Binding SelectedItem, ElementName=cmbProfiles, Mode=TwoWay}" Style="{StaticResource ListPreviewBox}" MaxHeight="112">
-                                                    <ListBox.ItemTemplate>
-                                                        <DataTemplate>
-                                                            <StackPanel>
-                                                                <TextBlock Text="{Binding Name}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
-                                                                <TextBlock Text="{Binding ID}" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="0,2,0,0"/>
-                                                            </StackPanel>
-                                                        </DataTemplate>
-                                                    </ListBox.ItemTemplate>
-                                                </ListBox>
-                                                <Grid Margin="0,8,0,8">
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-                                                    <TextBox x:Name="txtName" Grid.Column="0" Tag="Nombre del perfil" MaxLength="80" ToolTip="Escribe un nombre obligatorio para identificar el perfil." AutomationProperties.Name="Nombre del perfil"/>
-                                                    <TextBox x:Name="txtID" Grid.Column="2" Tag="ID (6 hex)" MaxLength="6" ToolTip="ID NextDNS de exactamente 6 caracteres hexadecimales." AutomationProperties.Name="ID NextDNS, seis caracteres hexadecimales"/>
-                                                </Grid>
-                                                <TextBlock x:Name="lblProfileMessage" Text="ID de seis caracteres hexadecimales." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                                    <Button x:Name="btnAddLocalProfile" Grid.Column="0" Content="Agregar perfil" Height="32" Click="BtnAdd_Click" Style="{StaticResource QuietActionButton}" HorizontalAlignment="Stretch" AutomationProperties.Name="Agregar perfil local"/>
-                                                    <Button x:Name="btnDeleteLocalProfile" Grid.Column="2" Content="Eliminar seleccionado" Height="32" Click="BtnDel_Click" Style="{StaticResource OutlineDestructiveButton}"/>
-                                                </Grid>
-                                            </StackPanel>
-                                        </Border>
-                                    </Expander>
-                                <Expander Header="Ajustes del perfil NextDNS" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,8" IsExpanded="False">
+                                <Expander x:Name="expApiProfileSettings" Expanded="ApiProfileSettings_Expanded" Header="Ajustes del perfil NextDNS" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,8" IsExpanded="False">
                                     <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8">
                                         <StackPanel x:Name="pnlApiProfileSettings">
                                             <TextBlock Text="Elige un perfil para consultar y cambiar estas opciones." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
                                             <ComboBox x:Name="cmbApiProfile" DisplayMemberPath="Name" SelectedValuePath="Id" Height="34" Margin="0,8,0,7" IsEnabled="False" ToolTip="Perfil remoto para operaciones de la API" SelectionChanged="ApiProfileDomainInputChanged"/>
                                             <Button x:Name="btnLoadApiSettings" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="Leer ajustes actuales" AutomationProperties.Name="Leer ajustes actuales" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
+                                            <StackPanel x:Name="pnlApiSettingsValues" Visibility="Collapsed">
                                             <CheckBox x:Name="chkApiLogsEnabled" Content="Guardar registros DNS" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,8,0,0"/>
                                             <CheckBox x:Name="chkApiDropIp" Content="No guardar IP del cliente" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
                                             <CheckBox x:Name="chkApiDropDomain" Content="No guardar dominios consultados" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
                                             <CheckBox x:Name="chkApiBlockPageEnabled" Content="Mostrar página de bloqueo" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,0,0,8"/>
+                                            </StackPanel>
                                             <Button x:Name="btnApplyApiSettings" Content="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="Guardar ajustes del perfil" AutomationProperties.Name="Guardar ajustes del perfil" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
                                             <TextBlock x:Name="lblApiSettingsStatus" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                                         </StackPanel>

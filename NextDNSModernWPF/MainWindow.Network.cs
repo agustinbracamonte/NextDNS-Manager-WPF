@@ -7,6 +7,7 @@ namespace NextDNSModernWPF;
 public partial class MainWindow
 {
     private TextBlock? _dnsSummary;
+    private System.Windows.Threading.DispatcherTimer? _networkRefreshTimer;
 
     private void InitializeNetworkInformation()
     {
@@ -17,6 +18,10 @@ public partial class MainWindow
         container.Children.Add(_dnsSummary);
         panel.Children.Add(container);
         RefreshNetworkInformation();
+        _networkRefreshTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+        _networkRefreshTimer.Tick += (_, _) => RefreshNetworkInformation();
+        _networkRefreshTimer.Start();
+        Closed += (_, _) => _networkRefreshTimer.Stop();
     }
 
     private void RefreshNetworkInformation()

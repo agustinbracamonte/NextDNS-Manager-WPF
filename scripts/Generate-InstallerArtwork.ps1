@@ -17,27 +17,21 @@ function Draw-BrandMark([System.Drawing.Graphics]$graphics, [float]$x, [float]$y
     $graphics.ScaleTransform($scale, $scale)
     $shield = New-Object System.Drawing.Drawing2D.GraphicsPath
     $shield.AddBezier(
-        [System.Drawing.Point]::new(256, 42), [System.Drawing.Point]::new(310, 69),
-        [System.Drawing.Point]::new(367, 89), [System.Drawing.Point]::new(416, 107))
+        [System.Drawing.Point]::new(256, 16), [System.Drawing.Point]::new(326, 48),
+        [System.Drawing.Point]::new(405, 75), [System.Drawing.Point]::new(476, 96))
     $shield.AddBezier(
-        [System.Drawing.Point]::new(416, 107), [System.Drawing.Point]::new(420, 220),
-        [System.Drawing.Point]::new(405, 318), [System.Drawing.Point]::new(360, 383))
+        [System.Drawing.Point]::new(476, 96), [System.Drawing.Point]::new(484, 238),
+        [System.Drawing.Point]::new(424, 405), [System.Drawing.Point]::new(256, 496))
     $shield.AddBezier(
-        [System.Drawing.Point]::new(360, 383), [System.Drawing.Point]::new(330, 425),
-        [System.Drawing.Point]::new(289, 453), [System.Drawing.Point]::new(256, 472))
+        [System.Drawing.Point]::new(256, 496), [System.Drawing.Point]::new(88, 405),
+        [System.Drawing.Point]::new(28, 238), [System.Drawing.Point]::new(36, 96))
     $shield.AddBezier(
-        [System.Drawing.Point]::new(256, 472), [System.Drawing.Point]::new(223, 453),
-        [System.Drawing.Point]::new(182, 425), [System.Drawing.Point]::new(152, 383))
-    $shield.AddBezier(
-        [System.Drawing.Point]::new(152, 383), [System.Drawing.Point]::new(107, 318),
-        [System.Drawing.Point]::new(92, 220), [System.Drawing.Point]::new(96, 107))
-    $shield.AddBezier(
-        [System.Drawing.Point]::new(96, 107), [System.Drawing.Point]::new(145, 89),
-        [System.Drawing.Point]::new(202, 69), [System.Drawing.Point]::new(256, 42))
+        [System.Drawing.Point]::new(36, 96), [System.Drawing.Point]::new(107, 75),
+        [System.Drawing.Point]::new(186, 48), [System.Drawing.Point]::new(256, 16))
     $shield.CloseFigure()
 
     $blueBrush = New-Object System.Drawing.Drawing2D.LinearGradientBrush(
-        [System.Drawing.Rectangle]::new(90, 42, 330, 430),
+        [System.Drawing.Rectangle]::new(36, 16, 440, 480),
         [System.Drawing.Color]::FromArgb(255, 76, 157, 255),
         [System.Drawing.Color]::FromArgb(255, 31, 99, 213), 90.0)
     $graphics.FillPath($blueBrush, $shield)

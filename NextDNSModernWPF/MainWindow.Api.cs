@@ -171,10 +171,6 @@ public partial class MainWindow
         cmbApiProfile.SelectionChanged += ApiProfile_SelectionChanged;
         btnAddAllowedDomain.Click += BtnAddAllowedDomain_Click;
         btnAddBlockedDomain.Click += BtnAddBlockedDomain_Click;
-        btnRemoveAllowedDomain.Click += BtnRemoveAllowedDomain_Click;
-        btnRemoveBlockedDomain.Click += BtnRemoveBlockedDomain_Click;
-        btnToggleAllowedDomain.Click += BtnToggleAllowedDomain_Click;
-        btnToggleBlockedDomain.Click += BtnToggleBlockedDomain_Click;
         btnRefreshDomainLists.Click += BtnRefreshDomainLists_Click;
         btnExportAllowedList.Click += (_, _) => ExportList(NextDnsListType.Allowlist);
         btnExportBlockedList.Click += (_, _) => ExportList(NextDnsListType.Denylist);
@@ -467,6 +463,7 @@ public partial class MainWindow
     private async void ApiProfile_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_bindingApiProfiles) return;
+        QueueProfileSettingsLoad();
         if (_apiOperationInProgress)
         {
             CancelActivityPageLoad();
@@ -520,15 +517,34 @@ public partial class MainWindow
         });
     }
 
-    private async void BtnRemoveAllowedDomain_Click(object sender, RoutedEventArgs e) =>
-        await RemoveDomainAsync(NextDnsListType.Allowlist, lstAllowedDomains.SelectedItem as NextDnsListEntry);
+    private async void AllowedDomainSwitch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: NextDnsListEntry entry } || !_allowedDomains.Contains(entry)) return;
+        await ToggleDomainAsync(NextDnsListType.Allowlist, entry);
+    }
 
-    private async void BtnRemoveBlockedDomain_Click(object sender, RoutedEventArgs e) =>
-        await RemoveDomainAsync(NextDnsListType.Denylist, lstBlockedDomains.SelectedItem as NextDnsListEntry);
+    private async void BlockedDomainSwitch_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: NextDnsListEntry entry } || !_blockedDomains.Contains(entry)) return;
+        await ToggleDomainAsync(NextDnsListType.Denylist, entry);
+    }
+
+    private async void AllowedDomainRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: NextDnsListEntry entry } || !_allowedDomains.Contains(entry)) return;
+        await RemoveDomainAsync(NextDnsListType.Allowlist, entry);
+    }
+
+    private async void BlockedDomainRemove_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: NextDnsListEntry entry } || !_blockedDomains.Contains(entry)) return;
+        await RemoveDomainAsync(NextDnsListType.Denylist, entry);
+    }
 
     private async Task RemoveDomainAsync(NextDnsListType listType, NextDnsListEntry? entry)
     {
-        if (entry is null) return;
+        if (entry is null || !IsCurrentListEntry(listType, entry) || _nextDnsApiClient is null ||
+            string.IsNullOrWhiteSpace(SelectedApiProfileId) || _apiOperationInProgress) return;
         System.Windows.MessageBoxResult confirm = System.Windows.MessageBox.Show(
             this,
             $"¿Eliminar {entry.Id} de la lista de NextDNS?",
@@ -537,6 +553,7 @@ public partial class MainWindow
             System.Windows.MessageBoxImage.Warning);
         if (confirm != System.Windows.MessageBoxResult.Yes) return;
 
+        if (!IsCurrentListEntry(listType, entry)) return;
         await ExecuteListWriteAsync(async (client, profileId) =>
         {
             await client.DeleteListEntryAsync(profileId, listType, entry.Id);
@@ -544,15 +561,10 @@ public partial class MainWindow
         });
     }
 
-    private async void BtnToggleAllowedDomain_Click(object sender, RoutedEventArgs e) =>
-        await ToggleDomainAsync(NextDnsListType.Allowlist, lstAllowedDomains.SelectedItem as NextDnsListEntry);
-
-    private async void BtnToggleBlockedDomain_Click(object sender, RoutedEventArgs e) =>
-        await ToggleDomainAsync(NextDnsListType.Denylist, lstBlockedDomains.SelectedItem as NextDnsListEntry);
-
     private async Task ToggleDomainAsync(NextDnsListType listType, NextDnsListEntry? entry)
     {
-        if (entry is null) return;
+        if (entry is null || !IsCurrentListEntry(listType, entry) || _nextDnsApiClient is null ||
+            string.IsNullOrWhiteSpace(SelectedApiProfileId) || _apiOperationInProgress) return;
         bool nextState = !entry.Active;
         await ExecuteListWriteAsync(async (client, profileId) =>
         {
@@ -560,6 +572,10 @@ public partial class MainWindow
             SetListsMessage(nextState ? $"Activado: {entry.Id}" : $"Desactivado: {entry.Id}", "StatusProtected");
         });
     }
+
+    private bool IsCurrentListEntry(NextDnsListType listType, NextDnsListEntry entry) =>
+        (listType == NextDnsListType.Allowlist ? _allowedDomains : _blockedDomains).Any(candidate =>
+            ReferenceEquals(candidate, entry) && !string.IsNullOrWhiteSpace(candidate.Id));
 
     private async void BtnRefreshDomainLists_Click(object sender, RoutedEventArgs e) => await RefreshApiListsAsync();
 
@@ -994,20 +1010,59 @@ public partial class MainWindow
     {
         string? endMessage = null;
         string endForeground = "TextSecondary";
+        int retryAttempt = 0;
+        NextDnsLogStreamQuery reconnectQuery = query;
         try
         {
-            await foreach (NextDnsLogStreamEvent streamEvent in client
-                .StreamLogsAsync(profileId, query, cancellation.Token)
-                .ConfigureAwait(false))
+            while (!cancellation.IsCancellationRequested)
             {
-                await Dispatcher.InvokeAsync(() => ApplyActivityStreamEvent(client, profileId, streamEvent));
+                try
+                {
+                    await foreach (NextDnsLogStreamEvent streamEvent in client
+                        .StreamLogsAsync(profileId, reconnectQuery, cancellation.Token)
+                        .ConfigureAwait(false))
+                    {
+                        reconnectQuery = ResumeActivityStreamQuery(reconnectQuery, streamEvent.Id);
+                        await Dispatcher.InvokeAsync(() => ApplyActivityStreamEvent(client, profileId, streamEvent));
+                        retryAttempt = 0;
+                    }
+
+                    if (cancellation.IsCancellationRequested) break;
+                    endMessage = "La conexión de actividad en vivo se cerró.";
+                    endForeground = "StatusAttention";
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception) when (IsRetryableActivityStreamFailure(exception))
+                {
+                    endMessage = "Se perdió la conexión de actividad en vivo: " + exception.Message;
+                    endForeground = "StatusAttention";
+                }
+                catch (Exception exception)
+                {
+                    endMessage = "Se interrumpió el stream de actividad: " + exception.Message;
+                    endForeground = "StatusAttention";
+                    break;
+                }
+
+                if (cancellation.IsCancellationRequested) break;
+
+                TimeSpan delay = GetActivityStreamReconnectDelay(retryAttempt);
+                retryAttempt = Math.Min(retryAttempt + 1, 5);
+                string reconnectMessage = $"{endMessage} Reintentando en {delay.TotalSeconds:0} s.";
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (ReferenceEquals(_activityStreamCancellation, cancellation) &&
+                        ReferenceEquals(client, _nextDnsApiClient) &&
+                        string.Equals(profileId, SelectedApiProfileId, StringComparison.OrdinalIgnoreCase))
+                        SetActivityMessage(reconnectMessage, "StatusAttention");
+                });
+
+                try { await Task.Delay(delay, cancellation.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { break; }
             }
-            endMessage = "La conexión de actividad en vivo se cerró.";
-            endForeground = "StatusAttention";
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-            endMessage = _activityStreamStopMessage ?? "Stream detenido.";
         }
         catch (Exception exception)
         {
@@ -1016,6 +1071,12 @@ public partial class MainWindow
         }
         finally
         {
+            if (cancellation.IsCancellationRequested)
+            {
+                endMessage = _activityStreamStopMessage ?? "Stream detenido.";
+                endForeground = "TextSecondary";
+            }
+
             if (!Dispatcher.HasShutdownStarted && !Dispatcher.HasShutdownFinished)
             {
                 try
@@ -1041,6 +1102,25 @@ public partial class MainWindow
             }
             cancellation.Dispose();
         }
+    }
+
+    private static NextDnsLogStreamQuery ResumeActivityStreamQuery(
+        NextDnsLogStreamQuery query,
+        string? lastEventId) =>
+        string.IsNullOrEmpty(lastEventId) ? query : query with { Id = lastEventId };
+
+    private static bool IsRetryableActivityStreamFailure(Exception exception) =>
+        exception is NextDnsApiException
+        {
+            Kind: NextDnsApiErrorKind.Network or NextDnsApiErrorKind.Timeout or
+                NextDnsApiErrorKind.RateLimited or NextDnsApiErrorKind.ServiceUnavailable
+        };
+
+    private static TimeSpan GetActivityStreamReconnectDelay(int retryAttempt)
+    {
+        int boundedAttempt = Math.Clamp(retryAttempt, 0, 5);
+        int seconds = boundedAttempt == 5 ? 30 : 1 << boundedAttempt;
+        return TimeSpan.FromSeconds(seconds);
     }
 
     private void ApplyActivityStreamEvent(NextDnsApiClient client, string profileId, NextDnsLogStreamEvent streamEvent)
@@ -1434,11 +1514,13 @@ public partial class MainWindow
             chkApiDropDomain.IsThreeState = !_originalDropDomain.HasValue;
             chkApiBlockPageEnabled.IsThreeState = !_originalBlockPageEnabled.HasValue;
             _apiSettingsLoaded = true;
+            pnlApiSettingsValues.Visibility = Visibility.Visible;
             SetApiSettingsStatus("Configuración leída desde el perfil seleccionado.", "TextSecondary");
         }
         catch (Exception exception)
         {
             _apiSettingsLoaded = false;
+            pnlApiSettingsValues.Visibility = Visibility.Collapsed;
             SetApiSettingsStatus("No se pudo leer la configuración: " + exception.Message, "StatusAttention");
         }
         finally
@@ -1654,8 +1736,6 @@ public partial class MainWindow
         string apiKeyText = CurrentApiKeyText;
         bool connected = _nextDnsApiClient is not null;
         bool hasProfile = connected && !string.IsNullOrWhiteSpace(SelectedApiProfileId);
-        NextDnsListEntry? allowedSelection = lstAllowedDomains.SelectedItem as NextDnsListEntry;
-        NextDnsListEntry? blockedSelection = lstBlockedDomains.SelectedItem as NextDnsListEntry;
         ImportListChoice? importTarget = cmbImportListTarget.SelectedItem as ImportListChoice;
         bool previewMatches = _previewPreflightComplete && _domainImportPreview is not null && importTarget is not null &&
             string.Equals(_previewedImportText, txtBulkDomainImport.Text, StringComparison.Ordinal) &&
@@ -1673,13 +1753,9 @@ public partial class MainWindow
         txtListDomain.IsEnabled = !busy && hasProfile;
         btnAddAllowedDomain.IsEnabled = !busy && hasProfile && !string.IsNullOrWhiteSpace(txtListDomain.Text);
         btnAddBlockedDomain.IsEnabled = btnAddAllowedDomain.IsEnabled;
+        lstAllowedDomains.IsEnabled = !busy && hasProfile;
+        lstBlockedDomains.IsEnabled = !busy && hasProfile;
         btnRefreshDomainLists.IsEnabled = !busy && hasProfile;
-        btnToggleAllowedDomain.IsEnabled = !busy && hasProfile && allowedSelection is not null;
-        btnToggleBlockedDomain.IsEnabled = !busy && hasProfile && blockedSelection is not null;
-        btnToggleAllowedDomain.Content = allowedSelection is null ? "Estado" : allowedSelection.Active ? "Desactivar" : "Activar";
-        btnToggleBlockedDomain.Content = blockedSelection is null ? "Estado" : blockedSelection.Active ? "Desactivar" : "Activar";
-        btnRemoveAllowedDomain.IsEnabled = !busy && hasProfile && allowedSelection is not null;
-        btnRemoveBlockedDomain.IsEnabled = !busy && hasProfile && blockedSelection is not null;
         btnExportAllowedList.IsEnabled = !busy && _allowedDomains.Count > 0;
         btnExportBlockedList.IsEnabled = !busy && _blockedDomains.Count > 0;
 
@@ -1708,6 +1784,7 @@ public partial class MainWindow
 
         UpdateActivityEmptyDescription();
         TryStartPendingActivityAutoLoad();
+        TryStartPendingProfileSettingsLoad();
     }
 
     private bool ApiSettingsChanged() =>
@@ -1771,7 +1848,8 @@ public partial class MainWindow
         SetListsMessage(_nextDnsApiClient is null ? "Conecta la API para consultar y editar estas listas." : "Selecciona un perfil NextDNS.", "TextSecondary");
         SetActivityMessage(string.Empty, "TextSecondary");
         InvalidateImportPreview();
-        SetApiSettingsStatus("Lee la configuración antes de editarla.", "TextSecondary");
+        pnlApiSettingsValues.Visibility = Visibility.Collapsed;
+        SetApiSettingsStatus("La configuración aún no se consultó.", "TextSecondary");
         UpdateApiControlStates();
     }
 

@@ -24,6 +24,7 @@ public partial class MainWindow
             _pauseButton.SetResourceReference(FrameworkElement.StyleProperty, "QuietActionButton");
             var menu = new System.Windows.Controls.ContextMenu();
             menu.Style = (Style)FindResource("PauseContextMenu");
+            menu.Template = CreatePauseContextMenuTemplate();
             foreach (int minutes in new[] { 5, 15, 30 })
             {
                 var item = new System.Windows.Controls.MenuItem
@@ -53,6 +54,24 @@ public partial class MainWindow
             _trayProfiles = new System.Windows.Forms.ToolStripMenuItem("Cambiar perfil");
             _trayContextMenu.Items.Insert(6, _trayProfiles);
         }
+    }
+
+    private static ControlTemplate CreatePauseContextMenuTemplate()
+    {
+        var template = new ControlTemplate(typeof(System.Windows.Controls.ContextMenu));
+        var surface = new FrameworkElementFactory(typeof(Border));
+        surface.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BackgroundProperty));
+        surface.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BorderBrushProperty));
+        surface.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(System.Windows.Controls.Control.BorderThicknessProperty));
+        surface.SetValue(Border.PaddingProperty, new TemplateBindingExtension(System.Windows.Controls.Control.PaddingProperty));
+        surface.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+        surface.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+
+        var items = new FrameworkElementFactory(typeof(ItemsPresenter));
+        items.SetValue(UIElement.SnapsToDevicePixelsProperty, true);
+        surface.AppendChild(items);
+        template.VisualTree = surface;
+        return template;
     }
 
     private async void PauseStatusTimer_Tick(object? sender, EventArgs e)

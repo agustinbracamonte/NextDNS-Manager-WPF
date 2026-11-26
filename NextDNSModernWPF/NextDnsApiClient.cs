@@ -153,6 +153,9 @@ public sealed class NextDnsLogEntry
     [JsonPropertyName("timestamp")]
     public DateTimeOffset? Timestamp { get; set; }
 
+    [JsonIgnore]
+    public DateTimeOffset? TimestampLocal => Timestamp?.ToLocalTime();
+
     [JsonPropertyName("domain")]
     public string? Domain { get; set; }
 

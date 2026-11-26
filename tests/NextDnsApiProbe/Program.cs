@@ -2,6 +2,7 @@ using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using NextDNSModernWPF;
@@ -25,6 +26,7 @@ internal static class Program
             await TestLiveLogStreamAsync();
             await TestLiveLogStreamCancellationAsync();
             await TestLiveLogStreamApiErrorAsync();
+            await TestActivityStreamReconnectPolicyAsync();
             await TestProfilePaginationQueryAsync();
             await TestListPaginationAsync();
             await TestAllowlistPaginationAsync();
@@ -86,6 +88,8 @@ internal static class Program
 
         Check(page.Items.Count == 1, "A log page is deserialized.");
         Check(page.Items[0].Domain == "sb.scorecardresearch.com", "The log domain is preserved.");
+        Check(page.Items[0].TimestampLocal?.Offset == TimeZoneInfo.Local.GetUtcOffset(page.Items[0].Timestamp!.Value), "Log display uses the machine's local time zone.");
+        Check(page.Items[0].TimestampLocal?.ToUniversalTime() == page.Items[0].Timestamp?.ToUniversalTime(), "Converting for display preserves the instant.");
         List<NextDnsLogReason>? reasons = page.Items[0].Reasons;
         Check(reasons is { Count: 2 } && reasons[0].Id == "blocklist:oisd" && reasons[0].Name == "oisd",
             "Log reasons deserialize as id/name objects.");
@@ -550,6 +554,63 @@ internal static class Program
                     (error.Code + error.Detail + error.Source).Contains(SyntheticApiKey, StringComparison.Ordinal)),
                 "Stream error metadata also redacts an echoed key.");
         }
+    }
+
+    private static async Task TestActivityStreamReconnectPolicyAsync()
+    {
+        Type windowType = typeof(MainWindow);
+        MethodInfo reconnectDelayMethod = windowType.GetMethod("GetActivityStreamReconnectDelay",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("The activity reconnect delay policy was not found.");
+        int[] expectedSeconds = [1, 2, 4, 8, 16, 30, 30];
+        for (int attempt = 0; attempt < expectedSeconds.Length; attempt++)
+        {
+            TimeSpan delay = (TimeSpan)reconnectDelayMethod.Invoke(null, [attempt])!;
+            Check(delay == TimeSpan.FromSeconds(expectedSeconds[attempt]),
+                $"Activity reconnect backoff is capped and grows exponentially (attempt {attempt}).");
+        }
+
+        MethodInfo resumeQueryMethod = windowType.GetMethod("ResumeActivityStreamQuery",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("The activity stream resume helper was not found.");
+        var originalQuery = new NextDnsLogStreamQuery
+        {
+            Id = "initial-id",
+            Device = "device-1",
+            Status = NextDnsLogStatus.Blocked,
+            Search = "example",
+            Raw = true
+        };
+        var resumedQuery = (NextDnsLogStreamQuery)resumeQueryMethod.Invoke(null, [originalQuery, "last-event-id"])!;
+        Check(resumedQuery.Id == "last-event-id" && resumedQuery.Device == originalQuery.Device &&
+              resumedQuery.Status == originalQuery.Status && resumedQuery.Search == originalQuery.Search &&
+              resumedQuery.Raw == originalQuery.Raw,
+            "Reconnecting updates the SSE cursor while preserving the active filters.");
+
+        MethodInfo retryFailureMethod = windowType.GetMethod("IsRetryableActivityStreamFailure",
+            BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("The activity stream retry policy was not found.");
+        NextDnsApiException transient = await CaptureStreamApiFailureAsync(HttpStatusCode.ServiceUnavailable);
+        NextDnsApiException permanent = await CaptureStreamApiFailureAsync(HttpStatusCode.Unauthorized);
+        Check((bool)retryFailureMethod.Invoke(null, [transient])!,
+            "Activity retries transient service failures.");
+        Check(!(bool)retryFailureMethod.Invoke(null, [permanent])!,
+            "Activity does not retry permanent authentication failures.");
+    }
+
+    private static async Task<NextDnsApiException> CaptureStreamApiFailureAsync(HttpStatusCode statusCode)
+    {
+        var handler = new ScriptedHandler((_, _) => JsonResponse(statusCode, "{ \"errors\": [{ \"code\": \"probe\" }] }"));
+        using var client = new NextDnsApiClient(SyntheticApiKey, handler);
+        try
+        {
+            await foreach (NextDnsLogStreamEvent _ in client.StreamLogsAsync("abc123")) { }
+        }
+        catch (NextDnsApiException exception)
+        {
+            return exception;
+        }
+        throw new InvalidOperationException($"Expected stream API failure for HTTP {(int)statusCode}.");
     }
 
     private static async Task TestHttp200ErrorsAsync()

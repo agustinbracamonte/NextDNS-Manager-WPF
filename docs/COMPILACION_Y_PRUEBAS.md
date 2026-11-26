@@ -66,7 +66,7 @@ No ejecutes `--cycle` en producción como una prueba de build. Usa una máquina 
 .\scripts\Build-Installer.ps1
 ```
 
-El script localiza `dotnet` e `ISCC.exe`, requiere Inno Setup 6.6+, prepara el CLI, publica Manager/servicio autocontenidos para `win-x64`, verifica el CLI, crea `install-files.sha256`, ejecuta `Test-InstallLayout.ps1` y compila con Inno Setup. El instalador sale en `artifacts\NextDNS-Manager-2.0.0-Setup-x64.exe`.
+El script localiza `dotnet` e `ISCC.exe`, requiere Inno Setup 6.6+, prepara el CLI, publica Manager/servicio autocontenidos para `win-x64`, verifica el CLI, crea `install-files.sha256`, ejecuta `Test-InstallLayout.ps1` y compila con Inno Setup. El instalador sale en `artifacts\NextDNS-Manager-2.1.0-Setup-x64.exe`.
 
 La verificación de una carpeta ya publicada es:
 
@@ -78,6 +78,6 @@ Este script comprueba que el manifiesto exista, que todos los archivos enumerado
 
 ## Workflow de release
 
-`.github/workflows/release.yml` acepta una etiqueta estable `vX.Y.Z` o ejecución manual con una etiqueta existente. Verifica la coincidencia de versión entre etiqueta, `.csproj` y script de build; usa .NET 10 e instala Inno Setup 7.1.1 con hash/firma validados; después publica el instalador y `SHA256SUMS.txt`.
+`.github/workflows/release.yml` se inicia manualmente con una etiqueta estable existente `vX.Y.Z`. Verifica la coincidencia de versión entre etiqueta, `.csproj` y script de build; usa .NET 10 e instala Inno Setup 7.1.1 con hash/firma validados; después publica el instalador y `SHA256SUMS.txt`.
 
 No hace falta publicar nada para compilar o probar localmente. Los comandos de esta guía no ejecutan el instalador ni modifican DNS, salvo el modo deliberado `BrokerProbe --cycle`.

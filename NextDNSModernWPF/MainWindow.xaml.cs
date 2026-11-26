@@ -735,6 +735,9 @@ namespace NextDNSModernWPF
 
         private void UpdateUI()
         {
+            infoIndicator.SetResourceReference(System.Windows.Shapes.Shape.FillProperty,
+                hasBrokerStatus && isProtected && !brokerStatusUncertain && !needsDnsRestore && !_pauseUntil.HasValue
+                    ? "StatusProtected" : "TextSecondary");
             UpdatePauseUi();
             UpdateTrayMenuState();
             cmbProfiles.IsEnabled = hasBrokerStatus && !brokerStatusUncertain && !_pauseUntil.HasValue &&
