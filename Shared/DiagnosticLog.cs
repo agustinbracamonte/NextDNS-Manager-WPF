@@ -61,7 +61,7 @@ internal static class DiagnosticLog
     private const int MaximumEventEntriesToScan = 1000;
     private const int MaximumServiceEntriesToDisplay = 250;
     private static readonly object ManagerLock = new();
-    private static readonly Dictionary<DiagnosticEvent, RateState> ManagerRate = new();
+    private static readonly Dictionary<(DiagnosticEvent Event, string Code), RateState> ManagerRate = new();
     private const string ProductFolderName = "NextDNS Manager";
     private const string LogsFolderName = "Logs";
 
@@ -75,6 +75,23 @@ internal static class DiagnosticLog
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ProductFolderName, LogsFolderName);
 
     internal static void WriteManager(DiagnosticEvent diagnosticEvent, Exception? exception = null)
+        => WriteManagerCore(diagnosticEvent, ExceptionCategory(exception));
+
+    /// <summary>
+    /// Writes a broker failure using only a fixed code from the allowlist. The
+    /// response text and exception details are deliberately not accepted here.
+    /// </summary>
+    internal static void WriteManagerBrokerFailure(DiagnosticEvent diagnosticEvent, BrokerFailureCode failureCode)
+        => WriteManagerCore(diagnosticEvent, BrokerFailureCatalog.GetDiagnosticId(failureCode));
+
+    internal static string CreateManagerBrokerFailureRecord(
+        DateTimeOffset now,
+        DiagnosticEvent diagnosticEvent,
+        BrokerFailureCode failureCode,
+        int suppressed = 0) =>
+        FormatManagerRecord(now, diagnosticEvent, BrokerFailureCatalog.GetDiagnosticId(failureCode), suppressed);
+
+    private static void WriteManagerCore(DiagnosticEvent diagnosticEvent, string diagnosticCode)
     {
         try
         {
@@ -82,7 +99,7 @@ internal static class DiagnosticLog
             lock (ManagerLock)
             {
                 DateTimeOffset now = DateTimeOffset.Now;
-                if (!TryTakeManagerRateSlot(diagnosticEvent, now, out int suppressed))
+                if (!TryTakeManagerRateSlot(diagnosticEvent, diagnosticCode, now, out int suppressed))
                     return;
 
                 Directory.CreateDirectory(directory);
@@ -94,7 +111,7 @@ internal static class DiagnosticLog
                 if (File.Exists(path) && IsReparsePoint(path))
                     return;
 
-                byte[] record = Encoding.UTF8.GetBytes(FormatManagerRecord(now, diagnosticEvent, exception, suppressed));
+                byte[] record = Encoding.UTF8.GetBytes(FormatManagerRecord(now, diagnosticEvent, diagnosticCode, suppressed));
                 // Share read access for the diagnostics viewer, while the absence of
                 // FileShare.Write serializes append-and-size checks across log writers.
                 using var stream = new FileStream(path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read);
@@ -260,12 +277,11 @@ internal static class DiagnosticLog
         _ => "ERROR"
     };
 
-    private static string FormatManagerRecord(DateTimeOffset now, DiagnosticEvent diagnosticEvent, Exception? exception, int suppressed)
+    private static string FormatManagerRecord(DateTimeOffset now, DiagnosticEvent diagnosticEvent, string diagnosticCode, int suppressed)
     {
-        string category = ExceptionCategory(exception);
-        string exceptionText = category.Length == 0 ? string.Empty : $" ({category})";
+        string codeText = diagnosticCode.Length == 0 ? string.Empty : $" ({diagnosticCode})";
         string suppressionText = suppressed > 0 ? $" Se omitieron {suppressed} eventos repetidos." : string.Empty;
-        return $"{now:yyyy-MM-dd HH:mm:ss.fff zzz}\t{Level(diagnosticEvent)}\t{diagnosticEvent}{exceptionText}\t{EventDescription(diagnosticEvent)}{suppressionText}{Environment.NewLine}";
+        return $"{now:yyyy-MM-dd HH:mm:ss.fff zzz}\t{Level(diagnosticEvent)}\t{diagnosticEvent}{codeText}\t{EventDescription(diagnosticEvent)}{suppressionText}{Environment.NewLine}";
     }
 
     private static string FormatServiceViewLine(DateTime time, DiagnosticEvent diagnosticEvent, string category, int suppressed)
@@ -275,15 +291,17 @@ internal static class DiagnosticLog
         return $"{time:yyyy-MM-dd HH:mm:ss.fff}\t{Level(diagnosticEvent)}\t{diagnosticEvent}{exceptionText}\t{EventDescription(diagnosticEvent)}{suppressionText}{Environment.NewLine}";
     }
 
-    private static bool TryTakeManagerRateSlot(DiagnosticEvent diagnosticEvent, DateTimeOffset now, out int suppressed)
+    private static bool TryTakeManagerRateSlot(DiagnosticEvent diagnosticEvent, string diagnosticCode, DateTimeOffset now, out int suppressed)
     {
         suppressed = 0;
         if (diagnosticEvent is DiagnosticEvent.ManagerStarted or DiagnosticEvent.ManagerShutdown or DiagnosticEvent.WindowsSessionEnding)
             return true;
 
-        if (!ManagerRate.TryGetValue(diagnosticEvent, out RateState? state))
+        var key = (diagnosticEvent, diagnosticCode);
+
+        if (!ManagerRate.TryGetValue(key, out RateState? state))
         {
-            ManagerRate.Add(diagnosticEvent, new RateState { LastWritten = now });
+            ManagerRate.Add(key, new RateState { LastWritten = now });
             return true;
         }
 

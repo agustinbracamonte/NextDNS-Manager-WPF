@@ -20,45 +20,63 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Descargar y verificar la versión publicada 2.3.0
+      - name: Preparar Inno Setup verificado
         shell: pwsh
         run: |
-          $base = 'https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases/download/v2.3.0'
-          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
-          $checksum = Join-Path $env:RUNNER_TEMP 'nextdns-checksums.txt'
-          Invoke-WebRequest "$base/NextDNS-Manager-2.3.0-Setup-x64.exe" -OutFile $setup
-          Invoke-WebRequest "$base/SHA256SUMS.txt" -OutFile $checksum
-          $line = (Get-Content -LiteralPath $checksum -Raw).Trim()
-          if ($line -notmatch '^([0-9a-f]{64})  NextDNS-Manager-2\.3\.0-Setup-x64\.exe$') { throw 'Manifiesto inválido.' }
-          if ((Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'Hash incorrecto.' }
+          $compilerSetup = Join-Path $env:RUNNER_TEMP 'innosetup.exe'
+          Invoke-WebRequest 'https://github.com/jrsoftware/issrc/releases/download/is-7_1_1/innosetup-7.1.1-x64.exe' -OutFile $compilerSetup
+          if ((Get-FileHash -LiteralPath $compilerSetup -Algorithm SHA256).Hash -ne '8A5A6711C3766A6E5FB74F280BA0E3551E719CE94538D901FDBD1F8F9920B3F0') { throw 'Hash de Inno Setup incorrecto.' }
+          $signature = Get-AuthenticodeSignature -FilePath $compilerSetup
+          if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notlike '*Pyrsys B.V.*') { throw 'Firma de Inno Setup inválida.' }
+          $process = Start-Process $compilerSetup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/ALLUSERS' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Inno Setup terminó con código $($process.ExitCode)." }
+      - name: Compilar instalador candidato
+        shell: pwsh
+        run: |
+          & ./scripts/Build-Installer.ps1 -DotNetPath (Get-Command dotnet).Source -IsccPath (Join-Path $env:ProgramFiles 'Inno Setup 7\ISCC.exe')
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar el candidato.' }
       - name: Instalar y verificar servicio y archivos
         id: install
         shell: pwsh
         run: |
-          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
           $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "El instalador terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
           $service = Get-Service NextDNSManagerBroker -ErrorAction Stop
           if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
-          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.0.0') { throw 'Versión instalada incorrecta.' }
+          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.1.0') { throw 'Versión instalada incorrecta.' }
       - name: Consultar estado mediante cliente normal
         id: status
         continue-on-error: true
         shell: pwsh
         run: |
-          dotnet run --project tests/BrokerProbe/BrokerProbe.csproj -c Release -- --status
+          dotnet build tests/BrokerProbe/BrokerProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar BrokerProbe.' }
+          dotnet run --project tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release -- tests/BrokerProbe/bin/Release/net10.0-windows/BrokerProbe.exe
           if ($LASTEXITCODE -ne 0) { throw 'El cliente no pudo consultar el servicio instalado.' }
       - name: Reparar y volver a verificar
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
-          $setup = Join-Path $env:RUNNER_TEMP 'NextDNS-Manager-2.3.0-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "La reparación terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
           if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar.' }
+      - name: Rechazar instalación con instancia abierta
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $mutex = [System.Threading.Mutex]::new($false, 'NextDNSManagerWPF-Running')
+          try {
+            $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+            $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+            if ($process.ExitCode -eq 0) { throw 'El instalador no rechazó la instancia abierta.' }
+            & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
+            if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio se detuvo durante el intento rechazado.' }
+          } finally { $mutex.Dispose() }
       - name: Desinstalar y comprobar limpieza
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh

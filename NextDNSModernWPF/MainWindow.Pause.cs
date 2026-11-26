@@ -104,11 +104,15 @@ public partial class MainWindow
         try
         {
             var response = await brokerClient.SendAsync(new BrokerRequest { Operation = minutes.HasValue ? "pause" : "resume", PauseMinutes = minutes });
-            if (!response.Success) throw new InvalidOperationException(UiErrorLocalizer.Localize(response.Error ?? "No se pudo cambiar la pausa."));
+            if (!response.Success) throw UiErrorLocalizer.CreateBrokerResponseException(response.Error);
             ApplyBrokerStatus(response);
         }
         catch (Exception error)
         {
+            if (UiErrorLocalizer.TryGetBrokerFailureCode(error, out BrokerFailureCode failureCode))
+                DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerActionFailure, failureCode);
+            else
+                DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, error);
             brokerStatusUncertain = true;
             brokerActionInProgress = false;
             System.Windows.MessageBox.Show(UiErrorLocalizer.Localize(error), "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);

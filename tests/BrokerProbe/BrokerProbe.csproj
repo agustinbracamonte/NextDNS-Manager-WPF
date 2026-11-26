@@ -12,5 +12,6 @@
     <ProjectReference Include="..\..\NextDNSManager.Service\NextDNSManager.Service.csproj" />
     <Compile Include="..\..\NextDNSModernWPF\BrokerClient.cs" Link="BrokerClient.cs" />
     <Compile Include="..\..\Shared\ProfileSwitchSelection.cs" Link="ProfileSwitchSelection.cs" />
+    <None Include="..\..\NextDNSModernWPF\Resources\Localization\broker-errors.json" Link="Resources\Localization\broker-errors.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

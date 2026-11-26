@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using NextDNSManager.Shared;
 
 namespace NextDNSModernWPF;
 
@@ -10,30 +11,9 @@ internal static class UiErrorLocalizer
     private static readonly IReadOnlyDictionary<string, string> KnownMessageKeys =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["El servicio auxiliar no está disponible. Repara la instalación de NextDNS Manager."] = "Code.Error.Broker.Generic",
-            ["La versión del protocolo del broker no coincide con esta aplicación."] = "Code.Error.Broker.Generic",
-            ["No se pudo acceder al broker de NextDNS. Repara la instalación desde el instalador y vuelve a intentarlo."] = "Code.Error.Broker.Generic",
-            ["No se pudo conectar con el broker de NextDNS. Repara la instalación desde el instalador y vuelve a intentarlo."] = "Code.Error.Broker.Generic",
-            ["No se pudo verificar el proceso del broker. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["No se pudo verificar el servicio del broker. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["No se encontró el servicio broker de NextDNS. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["La conexión no pertenece al proceso en ejecución del servicio broker. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["El broker no está configurado para ejecutarse como LocalSystem. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["La ruta configurada para el broker es inesperada. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["No se pudo inspeccionar el proceso del broker. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["El servidor de la conexión no es el broker instalado. Repara la instalación desde el instalador."] = "Code.Error.Broker.Generic",
-            ["No se pudo leer la ruta del proceso del broker."] = "Code.Error.Broker.Generic",
-            ["No se pudo leer el estado del servicio broker."] = "Code.Error.Broker.Generic",
-            ["No se pudo leer la configuración del servicio broker."] = "Code.Error.Broker.Generic",
-            ["No se pudo cambiar la pausa."] = "Code.Error.Broker.Generic",
             ["El broker de NextDNS no respondió en 60 segundos. Comprueba que el servicio esté iniciado o repáralo desde el instalador."] = "Code.Error.Broker.Timeout",
             ["La operación tardó demasiado. Consulta el estado antes de reintentar."] = "Code.Error.Broker.OperationTimeout",
-            ["El broker no pudo completar la operación."] = "Code.Error.Broker.Generic",
-            ["El broker no pudo cambiar de perfil."] = "Code.Error.Broker.Generic",
             ["La operación tardó demasiado. Consulta el estado antes de volver a intentarlo."] = "Code.Error.Broker.OperationTimeout",
-            ["No se pudo consultar el estado del broker."] = "Code.Error.Broker.Generic",
-            ["El broker no confirmó el perfil solicitado."] = "Code.Error.Broker.Generic",
-            ["El broker no confirmó el perfil seleccionado."] = "Code.Error.Broker.Generic",
             ["La pausa debe durar 5, 15 o 30 minutos."] = "Code.Error.Pause.InvalidDuration",
             ["Ya hay una pausa temporal pendiente."] = "Code.Error.Pause.AlreadyPending",
             ["La protección debe estar activa para pausarla."] = "Code.Error.Pause.NotActive",
@@ -84,6 +64,9 @@ internal static class UiErrorLocalizer
     {
         ArgumentNullException.ThrowIfNull(exception);
 
+        if (exception is BrokerResponseException brokerResponseException)
+            return brokerResponseException.Message;
+
         if (exception is NextDnsApiException apiException)
             return Localize(apiException);
 
@@ -94,6 +77,9 @@ internal static class UiErrorLocalizer
     {
         ArgumentNullException.ThrowIfNull(message);
         string firstLine = message.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None)[0];
+        if (BrokerFailureCatalog.TryClassifyKnownMessage(message, out BrokerFailureCode brokerFailureCode))
+            return LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(brokerFailureCode));
+
         if (KnownMessageKeys.TryGetValue(firstLine, out string? key))
             return LocalizationManager.Get(key);
 
@@ -106,6 +92,37 @@ internal static class UiErrorLocalizer
 
         return message;
     }
+
+    internal static BrokerResponseException CreateBrokerResponseException(string? responseError)
+    {
+        BrokerFailureCode code = BrokerFailureCatalog.ClassifyResponseError(responseError);
+        string displayMessage = code == BrokerFailureCode.BrokerReportedError
+            ? Localize(responseError!)
+            : LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(code));
+
+        return BrokerFailureCatalog.CreateResponseException(responseError, displayMessage);
+    }
+
+    internal static BrokerResponseException CreateActivationNotConfirmedException() =>
+        CreateKnownBrokerFailure(BrokerFailureCode.ActivationNotConfirmed, "El broker no confirmó el perfil solicitado.");
+
+    internal static BrokerResponseException CreateProfileSelectionNotConfirmedException() =>
+        CreateKnownBrokerFailure(BrokerFailureCode.ProfileSelectionNotConfirmed, "El broker no confirmó el perfil seleccionado.");
+
+    internal static bool TryGetBrokerFailureCode(Exception exception, out BrokerFailureCode code)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        if (exception is BrokerResponseException responseException)
+        {
+            code = responseException.FailureCode;
+            return true;
+        }
+
+        return BrokerFailureCatalog.TryClassifyKnownMessage(exception.Message, out code);
+    }
+
+    private static BrokerResponseException CreateKnownBrokerFailure(BrokerFailureCode code, string originalMessage) =>
+        new(originalMessage, code, LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(code)));
 
     private static bool TryLocalizeDynamicBrokerMessage(string message, out string? localized)
     {

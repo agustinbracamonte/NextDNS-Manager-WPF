@@ -620,18 +620,21 @@ namespace NextDNSModernWPF
                 {
                     ApplyBrokerStatus(response);
                     if (operation == "activate" && (!response.Active || !string.Equals(response.ProfileId, profileId, StringComparison.OrdinalIgnoreCase)))
-                        throw new InvalidOperationException("El broker no confirmó el perfil solicitado.");
+                        throw UiErrorLocalizer.CreateActivationNotConfirmedException();
                 }
                 else
                 {
-                    throw new InvalidOperationException(UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
-                        ? "El broker no pudo completar la operación."
-                        : response.Error));
+                    // Preserve the broker's original response separately from the
+                    // localized display message and allowlisted diagnostic code.
+                    throw UiErrorLocalizer.CreateBrokerResponseException(response.Error);
                 }
             }
             catch (Exception ex)
             {
-                DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, ex);
+                if (UiErrorLocalizer.TryGetBrokerFailureCode(ex, out BrokerFailureCode failureCode))
+                    DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerActionFailure, failureCode);
+                else
+                    DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, ex);
                 brokerStatusError = UiErrorLocalizer.Localize(ex);
                 brokerStatusUncertain = true;
                 brokerActionInProgress = false;
@@ -725,16 +728,17 @@ namespace NextDNSModernWPF
                             SetupRouter = chkSetupRouter.IsChecked == true
                         });
                         if (!response.Success)
-                            throw new InvalidOperationException(UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
-                                ? "El broker no pudo cambiar de perfil."
-                                : response.Error));
+                            throw UiErrorLocalizer.CreateBrokerResponseException(response.Error);
                         ApplyBrokerStatus(response);
                         if (!response.Active || !string.Equals(response.ProfileId, target.ID, StringComparison.OrdinalIgnoreCase))
-                            throw new InvalidOperationException("El broker no confirmó el perfil seleccionado.");
+                            throw UiErrorLocalizer.CreateProfileSelectionNotConfirmedException();
                     }
                     catch (Exception ex)
                     {
-                        DiagnosticLog.WriteManager(DiagnosticEvent.ProfileSwitchFailure, ex);
+                        if (UiErrorLocalizer.TryGetBrokerFailureCode(ex, out BrokerFailureCode failureCode))
+                            DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.ProfileSwitchFailure, failureCode);
+                        else
+                            DiagnosticLog.WriteManager(DiagnosticEvent.ProfileSwitchFailure, ex);
                         switchError = ex;
                         brokerStatusError = UiErrorLocalizer.Localize(ex);
                         brokerStatusUncertain = true;
@@ -804,9 +808,11 @@ namespace NextDNSModernWPF
                 }
                 else
                 {
-                    brokerStatusError = UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
-                        ? "No se pudo consultar el estado del broker."
-                        : response.Error);
+                    BrokerFailureCode failureCode = BrokerFailureCatalog.ClassifyResponseError(response.Error);
+                    DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerStatusCheckFailure, failureCode);
+                    brokerStatusError = failureCode == BrokerFailureCode.BrokerReportedError
+                        ? UiErrorLocalizer.Localize(response.Error!)
+                        : LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(failureCode));
                     brokerStatusUncertain = true;
                 }
             }
@@ -814,7 +820,10 @@ namespace NextDNSModernWPF
             {
                 // A failed status request is not evidence that protection is off.
                 // Preserve the last confirmed state; on first launch keep status unknown.
-                DiagnosticLog.WriteManager(DiagnosticEvent.BrokerStatusCheckFailure, ex);
+                if (UiErrorLocalizer.TryGetBrokerFailureCode(ex, out BrokerFailureCode failureCode))
+                    DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerStatusCheckFailure, failureCode);
+                else
+                    DiagnosticLog.WriteManager(DiagnosticEvent.BrokerStatusCheckFailure, ex);
                 brokerStatusError = UiErrorLocalizer.Localize(ex);
                 brokerStatusUncertain = true;
             }

@@ -12,6 +12,7 @@
   <ItemGroup>
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.14" />
     <Compile Include="..\Shared\BrokerProtocol.cs" Link="BrokerProtocol.cs" />
+    <Compile Include="..\Shared\BrokerFailureCatalog.cs" Link="BrokerFailureCatalog.cs" />
     <Compile Include="..\Shared\DiagnosticLog.cs" Link="DiagnosticLog.cs" />
     <Compile Include="..\Shared\TemporaryPausePolicy.cs" Link="TemporaryPausePolicy.cs" />
   </ItemGroup>

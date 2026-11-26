@@ -59,6 +59,7 @@ internal static class Program
         TestServiceRemovalRecovery();
         await TestTemporaryPauseAsync().ConfigureAwait(false);
         TestDiagnosticServiceRecord();
+        TestBrokerFailureCodes();
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
         TestProfileSwitchJournal();
         TestProfileSwitchSelection();
@@ -228,6 +229,81 @@ internal static class Program
             "service diagnostic records round-trip only allowlisted event and error categories.");
         Check(!DiagnosticLog.TryParseServiceRecord(record + "\t192.0.2.15", out _, out _, out _),
             "service diagnostic reader rejects appended free-form fields.");
+    }
+
+    private static void TestBrokerFailureCodes()
+    {
+        (string Message, BrokerFailureCode Code)[] cases =
+        [
+            ("El servicio auxiliar no está disponible. Repara la instalación de NextDNS Manager.", BrokerFailureCode.ServiceUnavailable),
+            ("La versión del protocolo del broker no coincide con esta aplicación.", BrokerFailureCode.ProtocolMismatch),
+            ("No se pudo acceder al broker de NextDNS. Repara la instalación desde el instalador y vuelve a intentarlo.", BrokerFailureCode.AccessDenied),
+            ("No se pudo conectar con el broker de NextDNS. Repara la instalación desde el instalador y vuelve a intentarlo.", BrokerFailureCode.PipeUnavailable),
+            ("No se pudo verificar el proceso del broker. Repara la instalación desde el instalador.", BrokerFailureCode.PipeProcessIdUnavailable),
+            ("No se pudo verificar el servicio del broker. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceManagerQueryFailed),
+            ("No se encontró el servicio broker de NextDNS. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceNotFound),
+            ("La conexión no pertenece al proceso en ejecución del servicio broker. Repara la instalación desde el instalador.", BrokerFailureCode.PipeServiceProcessMismatch),
+            ("El broker no está configurado para ejecutarse como LocalSystem. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceAccountUnexpected),
+            ("La ruta configurada para el broker es inesperada. Repara la instalación desde el instalador.", BrokerFailureCode.ServicePathUnexpected),
+            ("No se pudo inspeccionar el proceso del broker. Repara la instalación desde el instalador.", BrokerFailureCode.ProcessInspectionFailed),
+            ("El servidor de la conexión no es el broker instalado. Repara la instalación desde el instalador.", BrokerFailureCode.PipeProcessPathMismatch),
+            ("No se pudo leer la ruta del proceso del broker.", BrokerFailureCode.ProcessPathReadFailed),
+            ("No se pudo leer el estado del servicio broker.", BrokerFailureCode.ServiceStatusReadFailed),
+            ("No se pudo leer la configuración del servicio broker.", BrokerFailureCode.ServiceConfigurationReadFailed),
+            ("Este usuario no está autorizado para controlar NextDNS.", BrokerFailureCode.UserNotAuthorized),
+            ("No se pudo cambiar la pausa.", BrokerFailureCode.PauseActionUnconfirmed),
+            ("El broker no pudo completar la operación.", BrokerFailureCode.GenericResponse),
+            ("El broker no pudo cambiar de perfil.", BrokerFailureCode.ProfileChangeUnconfirmed),
+            ("No se pudo consultar el estado del broker.", BrokerFailureCode.StatusQueryUnconfirmed),
+            ("El broker no confirmó el perfil solicitado.", BrokerFailureCode.ActivationNotConfirmed),
+            ("El broker no confirmó el perfil seleccionado.", BrokerFailureCode.ProfileSelectionNotConfirmed)
+        ];
+
+        var observedCodes = new HashSet<BrokerFailureCode>();
+        foreach ((string message, BrokerFailureCode expected) in cases)
+        {
+            Check(BrokerFailureCatalog.TryClassifyKnownMessage(message, out BrokerFailureCode actual) && actual == expected,
+                $"broker failure message maps to {BrokerFailureCatalog.GetDiagnosticId(expected)}.");
+            Check(observedCodes.Add(expected), "each grouped broker failure has a distinct diagnostic code.");
+        }
+
+        Check(BrokerFailureCatalog.ClassifyResponseError(null) == BrokerFailureCode.ResponseErrorMissing &&
+              BrokerFailureCatalog.ClassifyResponseError("  ") == BrokerFailureCode.ResponseErrorMissing,
+            "missing broker error text maps to a fixed missing-detail code.");
+        Check(BrokerFailureCatalog.ClassifyResponseError("El broker no pudo completar la operación.") == BrokerFailureCode.GenericResponse,
+            "the legacy generic broker response gets its own diagnostic code.");
+
+        const string privateMarker = "profile-SECRET 192.0.2.15 example.invalid";
+        BrokerFailureCode reported = BrokerFailureCatalog.ClassifyResponseError("Fallo interno: " + privateMarker);
+        BrokerResponseException preserved = BrokerFailureCatalog.CreateResponseException(
+            "Fallo interno: " + privateMarker, "Localized safe message.");
+        string safeRecord = DiagnosticLog.CreateManagerBrokerFailureRecord(
+            DateTimeOffset.UnixEpoch, DiagnosticEvent.BrokerActionFailure, reported);
+        Check(reported == BrokerFailureCode.BrokerReportedError &&
+              preserved.ResponseError == "Fallo interno: " + privateMarker &&
+              preserved.Message == "Localized safe message." &&
+              preserved.FailureCode == BrokerFailureCode.BrokerReportedError &&
+              safeRecord.Contains("BROKER_REPORTED_ERROR", StringComparison.Ordinal) &&
+              !safeRecord.Contains(privateMarker, StringComparison.Ordinal) &&
+              !safeRecord.Contains("192.0.2.15", StringComparison.Ordinal) &&
+              !safeRecord.Contains("example.invalid", StringComparison.Ordinal),
+            "broker failure logging uses only an allowlisted code and omits response content.");
+        Check(BrokerProtocol.Version == 2,
+            "diagnostic failure codes do not change the broker wire protocol version.");
+
+        string translationsPath = Path.Combine(AppContext.BaseDirectory, "Resources", "Localization", "broker-errors.json");
+        using JsonDocument translations = JsonDocument.Parse(File.ReadAllText(translationsPath));
+        foreach (string language in new[] { "es", "en", "fr", "pt", "de" })
+        {
+            JsonElement catalog = translations.RootElement.GetProperty(language);
+            foreach (BrokerFailureCode code in Enum.GetValues<BrokerFailureCode>())
+            {
+                string key = BrokerFailureCatalog.GetLocalizationKey(code);
+                Check(catalog.TryGetProperty(key, out JsonElement message) &&
+                      message.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(message.GetString()),
+                    $"{language} has a translated broker message for {BrokerFailureCatalog.GetDiagnosticId(code)}.");
+            }
+        }
     }
 
     private static async Task TestProfileSwitchTransactionAsync()
