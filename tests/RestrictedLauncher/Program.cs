@@ -109,6 +109,8 @@ internal static class Program
                     NativeMethods.CloseHandle(processInfo.ProcessHandle);
             }
 
+            inputHandle.Dispose();
+            logHandle.Dispose();
             output = File.ReadAllText(outputPath);
         }
         finally
