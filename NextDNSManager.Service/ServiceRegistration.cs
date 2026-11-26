@@ -56,9 +56,13 @@ internal static class ServiceRegistration
 
     internal static void Remove()
     {
+        bool brokerExisted = NextDnsEngine.ServiceExists(BrokerProtocol.ServiceName);
         Stop();
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(45));
-        new NextDnsEngine().RemoveOwnedCliAsync(deadline.Token).GetAwaiter().GetResult();
+        ServiceRemovalRecovery.Run(
+            brokerExisted,
+            () => new NextDnsEngine().RemoveOwnedCliAsync(deadline.Token).GetAwaiter().GetResult(),
+            StartExistingAfterRemovalFailure);
         if (!NextDnsEngine.ServiceExists(BrokerProtocol.ServiceName)) return;
         Sc(new[] { "delete", BrokerProtocol.ServiceName }, deadline.Token);
         while (NextDnsEngine.ServiceExists(BrokerProtocol.ServiceName))
@@ -66,6 +70,21 @@ internal static class ServiceRegistration
         // Keep the read-only user policy and DNS recovery data if something
         // external removed an adapter: the engine refuses to discard a snapshot
         // before its restoration has been confirmed.
+    }
+
+    private static void StartExistingAfterRemovalFailure()
+    {
+        if (!NextDnsEngine.ServiceExists(BrokerProtocol.ServiceName))
+            throw new InvalidOperationException("El servicio auxiliar ya no está registrado.");
+
+        ValidateRegistration();
+        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        using var service = new ServiceController(BrokerProtocol.ServiceName);
+        ServiceStartupCoordinator.EnsureRunningAsync(
+            () => { service.Refresh(); return service.Status; },
+            _ => { service.Start(); return Task.CompletedTask; },
+            cancellation => Task.Delay(200, cancellation),
+            deadline.Token).GetAwaiter().GetResult();
     }
 
     private static void ValidateRegistration()

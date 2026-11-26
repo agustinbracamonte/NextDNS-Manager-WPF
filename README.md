@@ -1,90 +1,122 @@
-# 🛡️ NextDNS Manager (WPF)
+# NextDNS Manager 2.0
 
-**Cliente de escritorio moderno y nativo para gestionar el servicio NextDNS en Windows.**
+Aplicación de escritorio WPF para Windows que administra la protección DNS mediante el CLI oficial de NextDNS y un servicio auxiliar local. También ofrece una conexión opcional a la API de NextDNS para gestionar listas, consultar actividad y cambiar opciones compatibles.
 
-Este proyecto es una interfaz gráfica (GUI) construida en **WPF** y **.NET 10** que facilita la instalación, configuración y gestión del CLI oficial de NextDNS. Olvídate de usar la consola de comandos; gestiona tus perfiles y el estado del servicio con una interfaz elegante y funcional.
+El proyecto no implementa un resolver DNS propio ni reemplaza la aplicación GUI oficial de NextDNS. El instalador configura el servicio auxiliar para que la interfaz normal pueda consultar y cambiar el estado sin ejecutarse como administrador.
 
-![Captura de Pantalla](https://i.imgur.com/0DArnUB.png)
+## Funciones
 
-## ✨ Características Principales
+- **Inicio:** estado del servicio, perfil local seleccionado, DNS observado en los adaptadores, activar/desactivar, pausa temporal y acceso a la gestión de perfiles.
+- **Perfiles locales:** nombre e ID NextDNS de seis caracteres hexadecimales. Se guardan en el perfil de Windows y agregarlos no cambia ni activa el perfil seleccionado.
+- **Listas:** consulta de listas permitidas y bloqueadas del perfil remoto; agregar, eliminar, activar o desactivar entradas; importar TXT o JSON con previsualización y exportar JSON conservando el estado de las entradas exportadas.
+- **Actividad:** registros DNS entregados por la API de NextDNS, filtros de dominio, dispositivo, resultado y fecha/hora local, paginación y consulta en vivo. El modo en vivo no admite filtros de fecha.
+- **Ajustes:** apariencia automática/clara/oscura, opciones de activación del servicio, clave API protegida y opciones remotas compatibles de registros, privacidad de IP/dominio y página de bloqueo.
+- **Bandeja y diagnóstico:** acceso al estado desde el área de notificación y vista de registros sanitizados de la aplicación/servicio.
+- **Actualizaciones:** comprobación de nuevas versiones de GitHub; la descarga e instalación comienzan solo después de una acción explícita.
 
-* **🎨 Interfaz Moderna:** Diseño oscuro con estilo "Dark Mode", bordes redondeados y fondo translúcido (efecto ahumado) para integrarse con Windows 10/11.
-* **⚙️ Gestión de Perfiles:** Guarda y cambia rápidamente entre diferentes IDs de configuración de NextDNS (Casa, Trabajo, Niños, etc.).
-* **🚀 Control Total del Servicio:** Botones intuitivos para Instalar, Desinstalar, Iniciar y Detener el servicio de NextDNS en segundo plano.
-* **tray Icon:** La aplicación se minimiza a la bandeja del sistema (al lado del reloj) para no molestar mientras protege tu red.
-* **Bandeja y apariencia:** Haz clic derecho en el icono para activar o desactivar la protección y consultar su estado. En la ventana puedes elegir tema claro, oscuro o automático según Windows.
-* **🔒 Privacidad:** Permite configurar si deseas reportar el nombre del dispositivo a los logs de NextDNS.
-* **📦 Portátil e instalable:** El manager se distribuye con el CLI oficial de NextDNS como archivo auxiliar o mediante un instalador completo.
+La aplicación es adaptable a la zona útil de pantalla y al DPI de Windows. En Windows 11 22H2 o posterior usa el material de ventana de DWM; en sistemas anteriores conserva una presentación translúcida de respaldo, sin prometer el mismo desenfoque.
 
-## 📥 Descarga e Instalación
+## Requisitos
 
-Puedes descargar la última versión desde la sección de **[Releases](https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases)**.
+- Windows x64.
+- Para compilar: .NET 10 SDK y PowerShell.
+- Para crear el instalador: Inno Setup 6.6 o posterior. El workflow de publicación fija Inno Setup 7.1.1.
+- Para instalar o quitar el servicio auxiliar: permisos de administrador.
+- Para usar Listas, Actividad y ajustes remotos: una clave API válida de NextDNS. El control local de protección no requiere esa clave.
 
-1.  Descarga el instalador `NextDNS-Manager-<versión>-Setup-x64.exe` de la última versión.
-2.  Ejecútalo y sigue los pasos de instalación.
-3.  Abre la aplicación, introduce tu **ID de Perfil** de NextDNS y dale a **ACTIVAR**.
+El instalador publicado incluye la aplicación, el runtime de .NET y el servicio auxiliar. El CLI oficial `nextdns.exe` se prepara desde la release v1.50.2 y se verifica mediante SHA-256 antes de empaquetarlo.
 
-## 🛠️ Tecnologías Usadas
+## Instalación y primeros pasos
 
-* **Lenguaje:** C#
-* **Framework:** .NET 10 (Preview/RC)
-* **UI:** WPF (Windows Presentation Foundation)
-* **Estilos:** XAML personalizado con `WindowChrome` para bordes modernos.
-* **Empaquetado:** Inno Setup.
+1. Descarga `NextDNS-Manager-<versión>-Setup-x64.exe` desde [Releases](https://github.com/agustinbracamonte/NextDNS-Manager-WPF/releases) y ejecútalo. El instalador solicita elevación para registrar el servicio auxiliar.
+2. En **Inicio**, pulsa **Administrar perfiles**. En **Ajustes → Perfiles locales**, agrega un nombre y el ID de seis caracteres que muestra tu configuración NextDNS.
+3. Selecciona el perfil en Inicio y usa **Activar**. El perfil agregado no se activa automáticamente.
+4. Para las funciones remotas, abre **Ajustes**, introduce una clave API de NextDNS, verifícala y guárdala si quieres que la aplicación la recuerde.
 
-## Núcleo oficial y prevención de versiones vulnerables
+La X oculta la ventana en la bandeja; **Salir** en el menú de la bandeja o `Ctrl+Q` termina la aplicación. Cerrar la interfaz no desactiva el servicio DNS.
 
-El diagnóstico detallado del consumo de CPU, la causa en el parser DNS y el alcance sobre el cliente oficial están documentados en [docs/ANALISIS_CONSUMO_CPU_NEXTDNS.md](docs/ANALISIS_CONSUMO_CPU_NEXTDNS.md).
+Si también está instalado el cliente GUI oficial de NextDNS, no actives ambos clientes al mismo tiempo: administran el DNS por separado y pueden competir por el servicio. El servicio auxiliar del Manager detecta el servicio oficial en los casos reconocidos y evita la activación incompatible.
 
-El manager instala el CLI oficial de NextDNS; no implementa su propio resolver. El CLI v1.50.2 incluye la corrección upstream [08e4948](https://github.com/nextdns/nextdns/commit/08e4948af65f60e9fe93856388408d21c346f0f1) del bucle de CPU al procesar registros DNS adicionales no OPT. El manager ahora rechaza activar el servicio si `nextdns.exe` es anterior a v1.50.2.
+## Importación y límites de datos
 
-Antes de compilar o publicar, prepara el binario oficial de Windows x64 y verifica su SHA-256:
+- TXT: un dominio o URL por línea; las entradas nuevas se agregan activas.
+- JSON: arreglo de objetos con `id` (texto) y `active` (booleano). El archivo exportado tiene ese formato.
+- La importación siempre requiere previsualizar. Se omiten duplicados, entradas inválidas y dominios que ya estén en NextDNS; las entradas existentes conservan su estado. Por eso, una importación JSON no restaura el estado de una entrada que ya existía.
+- El archivo de importación tiene un límite de 2 MiB y cada lista está limitada por la API del cliente a 5000 entradas.
+- Actividad consulta registros alojados por NextDNS, no un historial local independiente. La ventana conserva hasta 1000 consultas visibles. Las horas de filtro se eligen en hora local, se convierten a UTC y el límite **Hasta** es exclusivo.
 
-```powershell
-powershell -File .\scripts\Prepare-NextDNSCli.ps1
-dotnet publish .\NextDNSModernWPF\NextDNSModernWPF.csproj -c Release
-```
+## Compilar
 
-El proyecto copia `nextdns.exe` junto al manager publicado y falla al compilar si falta o si no coincide con el hash fijado. El script fija la release v1.50.2 y verifica el hash del ZIP, el hash del ejecutable, la arquitectura y la versión embebida.
-
-El script prepara el CLI para este manager; no reemplaza el servicio ni el motor del cliente oficial de Windows. El cliente oficial incluye su propio `NextDNSService.exe` y `NextDNSEngine.dll`; no se deben sustituir manualmente por el ejecutable del CLI. Para mantener ambos clientes, no los actives simultáneamente en la misma máquina porque compiten por el servicio DNS.
-
-“Reportar nombre de dispositivo” y “modo router” ahora son opciones independientes. El modo router queda desactivado por defecto porque acepta solicitudes de otros equipos de la red.
-
-## Crear el instalador personalizado
-
-Instala .NET 10 SDK e Inno Setup 7 y ejecuta:
+Primero prepara el CLI oficial fijado por el proyecto; este paso descarga la release de NextDNS y comprueba versión, arquitectura y hashes:
 
 ```powershell
-powershell -File .\scripts\Build-Installer.ps1
+.\scripts\Prepare-NextDNSCli.ps1
+dotnet build .\NextDNSModernWPF.slnx -c Release
 ```
 
-El resultado es un instalador autocontenido x64 en `artifacts\NextDNS-Manager-1.4.0-Setup-x64.exe`. El asistente mantiene el tema oscuro y usa el escudo azul minimalista de NextDNS; agrega acceso directo al escritorio como opción y ofrece abrir el manager al terminar. Instala el servicio auxiliar de control una sola vez. El instalador no sustituye el cliente GUI oficial de Windows.
+El proyecto WPF falla intencionalmente si `NextDNSModernWPF\nextdns.exe` falta o no coincide con el SHA-256 esperado. Para compilar solo un componente:
 
-La versión 1.1.2 evita instancias e iconos duplicados y bloquea la instalación o desinstalación mientras el Manager siga abierto. La X oculta la ventana; usa **Salir** desde la bandeja para cerrar el programa antes de reparar o actualizar. El instalador verifica todos los archivos copiados mediante SHA-256. Puedes repetir esa comprobación con `powershell -File .\scripts\Test-InstallLayout.ps1 -Directory 'C:\Program Files\NextDNS Manager'`. El diagnóstico del error de arranque está en [docs/ARRANQUE_Y_BANDEJA.md](docs/ARRANQUE_Y_BANDEJA.md).
+```powershell
+dotnet build .\NextDNSModernWPF\NextDNSModernWPF.csproj -c Release
+dotnet build .\NextDNSManager.Service\NextDNSManager.Service.csproj -c Release
+```
 
-## ⚠️ Requisitos
+## Pruebas
 
-* Windows 10 o Windows 11 (64 bits).
-* Permisos de Administrador para instalar, actualizar o desinstalar. La interfaz normal permite activar y desactivar sin elevación desde la versión 1.2.0.
+Los proyectos `BrokerProbe`, `NextDnsApiProbe` y `UpdateProbe` ejecutan pruebas de consola. Tras preparar el CLI, las pruebas siguientes usan políticas locales o manejadores HTTP falsos; no necesitan una clave API real:
 
-El [servicio auxiliar de control](docs/PERMISOS_Y_SERVICIO.md) limita el acceso al usuario de la sesión que instaló el Manager y conserva el DNS anterior al desactivar. El CLI permanece instalado entre activaciones. Cerrar la interfaz conserva el estado de protección elegido.
+```powershell
+dotnet run --project .\tests\BrokerProbe\BrokerProbe.csproj
+dotnet run --project .\tests\NextDnsApiProbe\NextDnsApiProbe.csproj
+dotnet run --project .\tests\UpdateProbe\UpdateProbe.csproj
+```
 
-El Manager se registra una vez para iniciar en la bandeja al comenzar la sesión de Windows. Se puede desactivar desde la sección Aplicaciones de inicio del Administrador de tareas. La protección DNS funciona mediante los servicios de Windows aunque la ventana esté cerrada, y el servicio comprueba su estado al reanudar desde suspensión o hibernación.
+`tests\LifecycleProbe` crea una ventana WPF para verificar el cierre de sesión/apagado simulado. No es una prueba de consola y puede inicializar la aplicación y la integración API del usuario; ejecútala solo en una sesión de prueba y con el Manager cerrado.
 
-El botón **Registros de diagnóstico** muestra eventos sanitizados de la aplicación y del servicio. Las ubicaciones, los límites y la retención se describen en [docs/REGISTROS_DIAGNOSTICO.md](docs/REGISTROS_DIAGNOSTICO.md).
+`BrokerProbe` también acepta modos contra un servicio instalado. `--status` consulta el servicio, `--malformed-live` comprueba su protocolo y `--cycle` activa/desactiva NextDNS y cambia DNS real para verificar la restauración. **No uses `--cycle` como prueba offline**; requiere un equipo de prueba y un perfil válido.
 
-## Actualizaciones
+Más información en [compilación y pruebas](docs/COMPILACION_Y_PRUEBAS.md).
 
-El Manager consulta automáticamente la última versión estable de GitHub al iniciarse y cada 24 horas mientras permanece abierto en la bandeja. Al detectar un instalador más reciente muestra un aviso y un acceso en la ventana. También puedes elegir **Buscar actualizaciones** en el menú del icono de la bandeja. Una falla de red no bloquea el inicio ni la protección.
+## Crear el instalador
 
-Al detectar una versión nueva, el botón de la ventana descarga el instalador con progreso y compara su tamaño y SHA-256 con `SHA256SUMS.txt` de la misma publicación. Solo después de una confirmación explícita se cierra el Manager y se abre el instalador; Windows pedirá permisos de administrador. El checksum detecta cambios o daños durante la descarga, pero no autentica al publicador: si la cuenta, el repositorio o el workflow de GitHub se comprometen, el instalador y su checksum podrían reemplazarse juntos. El instalador actualmente no está firmado digitalmente y Windows puede mostrar una advertencia. La búsqueda automática solo detecta versiones; nunca descarga ni ejecuta archivos por su cuenta.
+Con .NET 10 SDK e Inno Setup 6.6 o posterior instalados:
 
-Para publicar una versión, actualiza las versiones de los proyectos, `Build-Installer.ps1` y `NextDNSManager.iss`; integra los cambios en `main` y sube una etiqueta estable `vX.Y.Z` que coincida con esas versiones. El workflow `release.yml` compila el instalador para Windows, verifica el CLI, genera `SHA256SUMS.txt` y crea la Release con ambos archivos. El hash detecta errores de descarga; una firma digital de código requeriría un certificado de publicación.
+```powershell
+.\scripts\Build-Installer.ps1
+```
 
-## 📄 Créditos
+El script prepara el CLI, publica aplicación y servicio como `win-x64` autocontenido, valida el manifiesto de instalación y genera:
 
-Este proyecto es una interfaz gráfica no oficial. Utiliza el cliente CLI oficial de [NextDNS](https://nextdns.io) como motor subyacente.
+```text
+artifacts\NextDNS-Manager-2.0.0-Setup-x64.exe
+```
 
----
-Hecho con ❤️ y .NET
+Para verificar después una carpeta instalada:
+
+```powershell
+.\scripts\Test-InstallLayout.ps1 -Directory "$env:ProgramFiles\NextDNS Manager"
+```
+
+El instalador requiere permisos de administrador, comprueba que el Manager no esté abierto y verifica hashes de los archivos copiados. El pipeline de publicación está en `.github/workflows/release.yml`.
+
+## Documentación
+
+- [Arquitectura y organización del repositorio](docs/ARQUITECTURA.md)
+- [Seguridad y privacidad](docs/SEGURIDAD_Y_PRIVACIDAD.md)
+- [Instalación, inicio y actualizaciones](docs/INSTALACION_Y_ACTUALIZACIONES.md)
+- [Compilación y pruebas](docs/COMPILACION_Y_PRUEBAS.md)
+- [Referencias visuales históricas](docs/REFERENCIAS_VISUALES.md)
+- [Permisos y servicio auxiliar](docs/PERMISOS_Y_SERVICIO.md)
+- [Registros de diagnóstico](docs/REGISTROS_DIAGNOSTICO.md)
+- [Análisis del consumo de CPU del cliente NextDNS](docs/ANALISIS_CONSUMO_CPU_NEXTDNS.md)
+- [Investigación del inicio y la bandeja](docs/ARRANQUE_Y_BANDEJA.md)
+
+## Alcance y limitaciones
+
+- La clave API, los permisos de la cuenta NextDNS y la disponibilidad de su API determinan qué funciones remotas se pueden usar.
+- Los filtros de fecha no se pueden usar mientras Actividad está en vivo.
+- Las imágenes en `docs/referencias/` son maquetas históricas, no capturas actuales ni una especificación funcional. Las decisiones visuales vigentes se describen en [Referencias visuales](docs/REFERENCIAS_VISUALES.md); actualmente el escudo y la marca aparecen solo en Inicio.
+- El instalador del proyecto no está firmado digitalmente. SHA-256 permite detectar errores o cambios respecto del manifiesto obtenido, pero no acredita por sí solo quién publicó el archivo.
+- Este repositorio no contiene un archivo `LICENSE`; no se debe inferir una licencia de redistribución que no esté declarada.
+
+El Manager es un proyecto independiente y no oficial de NextDNS. Utiliza el [CLI oficial de NextDNS](https://nextdns.io/) como motor DNS.

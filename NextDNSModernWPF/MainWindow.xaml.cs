@@ -69,6 +69,7 @@ namespace NextDNSModernWPF
         {
             ThemeManager.Initialize(System.Windows.Application.Current);
             InitializeComponent();
+            InitializeNetworkInformation();
             cmbTheme.SelectionChanged += CmbTheme_SelectionChanged;
             ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
             SyncThemeSelection();
@@ -86,8 +87,10 @@ namespace NextDNSModernWPF
 
                 try { this.Icon = BitmapFrame.Create(new Uri("pack://application:,,,/escudo_dns.ico")); } catch { }
                 InitializeTrayIcon();
+                InitializePauseUi();
 
                 LoadProfiles();
+                InitializeApiUi();
                 btnAction.IsEnabled = false;
                 _ = CheckCurrentStatusAsync(enableActionWhenComplete: true);
                 updateTimer = new DispatcherTimer { Interval = TimeSpan.FromHours(24) };
@@ -182,6 +185,7 @@ namespace NextDNSModernWPF
         {
             if (updateTimer != null) { updateTimer.Stop(); updateTimer.Tick -= UpdateTimer_Tick; }
             if (brokerStatusRetryTimer != null) { brokerStatusRetryTimer.Stop(); brokerStatusRetryTimer.Tick -= BrokerStatusRetryTimer_Tick; }
+            if (_pauseStatusTimer != null) { _pauseStatusTimer.Stop(); _pauseStatusTimer.Tick -= PauseStatusTimer_Tick; _pauseStatusTimer = null; }
             try { updateDownloadCancellation?.Cancel(); } catch { }
             DetachThemeEvents();
             cmbProfiles.SelectionChanged -= CmbProfiles_SelectionChanged;
@@ -302,6 +306,7 @@ namespace NextDNSModernWPF
         private void TrayContextMenu_Opening(object sender, System.ComponentModel.CancelEventArgs e)
         {
             UpdateTrayMenuState();
+            RefreshTrayProfiles();
         }
 
         private async void UpdateTimer_Tick(object sender, EventArgs e) => await CheckForUpdatesAsync(false);
@@ -468,7 +473,7 @@ namespace NextDNSModernWPF
                 return;
             }
             if (requestedOperation == "activate" && isProtected && !needsDnsRestore) return;
-            if (requestedOperation == "deactivate" && !isProtected && !needsDnsRestore) return;
+            if (requestedOperation == "deactivate" && !isProtected && !needsDnsRestore && !_pauseUntil.HasValue) return;
             btnAction.IsEnabled = false;
             brokerActionInProgress = true;
             UpdateUI();
@@ -711,6 +716,7 @@ namespace NextDNSModernWPF
         private void ApplyBrokerStatus(BrokerResponse response)
         {
             isProtected = response.Active;
+            _pauseUntil = response.State == "paused" ? response.PauseUntilUtc : null;
             needsDnsRestore = response.State == "attention";
             if (response.Active)
             {
@@ -723,13 +729,16 @@ namespace NextDNSModernWPF
             brokerStatusUncertain = false;
             if (response.Active)
                 SelectProfileById(activeProfileId);
+            RefreshNetworkInformation();
             UpdateUI();
         }
 
         private void UpdateUI()
         {
+            UpdatePauseUi();
             UpdateTrayMenuState();
-            cmbProfiles.IsEnabled = !statusCheckInProgress && (!brokerActionInProgress || profileSwitchInProgress);
+            cmbProfiles.IsEnabled = hasBrokerStatus && !brokerStatusUncertain && !_pauseUntil.HasValue &&
+                !statusCheckInProgress && (!brokerActionInProgress || profileSwitchInProgress);
             btnAction.IsEnabled = !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (needsDnsRestore)
             {
@@ -753,6 +762,15 @@ namespace NextDNSModernWPF
                 return;
             }
 
+            if (_pauseUntil.HasValue && !isProtected)
+            {
+                lblStatus.Text = "PAUSADO";
+                lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusAttention");
+                lblInfo.Text = $"La protección se reanudará después de las {_pauseUntil.Value.ToLocalTime():HH:mm}. Reanúdala para cambiar de perfil.";
+                btnAction.Content = "ACTIVAR";
+                SetActionButtonTheme("NextBlue", "ActionButtonForeground");
+                return;
+            }
             if (isProtected)
             {
                 lblStatus.Text = "PROTEGIDO";
@@ -798,6 +816,8 @@ namespace NextDNSModernWPF
                 ? "desconocido"
                 : needsDnsRestore
                     ? "requiere restauración DNS"
+                    : _pauseUntil.HasValue
+                        ? $"pausado hasta {_pauseUntil.Value.ToLocalTime():HH:mm}"
                     : isProtected
                         ? $"activo · {GetProfileDisplayName(activeProfileId ?? string.Empty)}"
                         : "inactivo";
@@ -821,7 +841,7 @@ namespace NextDNSModernWPF
             if (_trayDisableMenuItem != null)
             {
                 _trayDisableMenuItem.Text = needsDnsRestore ? "Restablecer DNS" : "Desactivar NextDNS";
-                _trayDisableMenuItem.Enabled = canRunAction && (isProtected || needsDnsRestore);
+                _trayDisableMenuItem.Enabled = canRunAction && (isProtected || needsDnsRestore || _pauseUntil.HasValue);
             }
             if (_trayRefreshStatusMenuItem != null)
                 _trayRefreshStatusMenuItem.Enabled = !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
@@ -845,28 +865,85 @@ namespace NextDNSModernWPF
             }
         }
 
+        private void ManageProfiles_Click(object sender, RoutedEventArgs e)
+        {
+            mainTabs.SelectedIndex = 3;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                expLocalProfiles.IsExpanded = true;
+                expLocalProfiles.BringIntoView();
+                txtName.Focus();
+            }), DispatcherPriority.Loaded);
+        }
+
         private void BtnAdd_Click(object sender, RoutedEventArgs e)
         {
-            if (!string.IsNullOrWhiteSpace(txtName.Text) && !string.IsNullOrWhiteSpace(txtID.Text))
+            string name = txtName.Text.Trim();
+            string id = txtID.Text.Trim();
+            if (name.Length == 0)
             {
-                Profile profile = new Profile { Name = txtName.Text.Trim(), ID = txtID.Text.Trim() };
-                profiles.Add(profile);
-                SaveProfiles();
-                RefreshCombo();
-                cmbProfiles.SelectedItem = profile;
-                txtName.Clear(); txtID.Clear();
+                SetProfileFormMessage("Escribe un nombre para el perfil.", "StatusAttention");
+                txtName.Focus();
+                return;
             }
+
+            if (!IsValidProfileId(id))
+            {
+                SetProfileFormMessage("El ID debe tener exactamente 6 caracteres hexadecimales (0–9, A–F).", "StatusAttention");
+                txtID.Focus();
+                return;
+            }
+
+            if (profiles.Any(profile => string.Equals(profile.ID?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
+            {
+                SetProfileFormMessage("Ya existe un perfil con ese ID.", "StatusAttention");
+                txtID.Focus();
+                return;
+            }
+
+            if (profiles.Any(profile => string.Equals(profile.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
+            {
+                SetProfileFormMessage("Ya existe un perfil con ese nombre.", "StatusAttention");
+                txtName.Focus();
+                return;
+            }
+
+            string previousSelectionId = (cmbProfiles.SelectedItem as Profile)?.ID;
+            if (string.IsNullOrWhiteSpace(previousSelectionId) && isProtected)
+                previousSelectionId = activeProfileId;
+            List<Profile> updatedProfiles = profiles.ToList();
+            updatedProfiles.Add(new Profile { Name = name, ID = id });
+            if (!TrySaveProfiles(updatedProfiles)) return;
+
+            profiles = updatedProfiles;
+            RefreshCombo();
+            suppressProfileSelectionChanged = true;
+            try
+            {
+                cmbProfiles.SelectedItem = previousSelectionId is null
+                    ? null
+                    : profiles.FirstOrDefault(profile => string.Equals(profile.ID, previousSelectionId, StringComparison.OrdinalIgnoreCase));
+            }
+            finally { suppressProfileSelectionChanged = false; }
+
+            txtName.Clear();
+            txtID.Clear();
+            SetProfileFormMessage("Perfil agregado. El perfil activo no cambió.", "StatusProtected");
         }
 
         private void BtnDel_Click(object sender, RoutedEventArgs e)
         {
-            if (cmbProfiles.SelectedItem != null)
-            {
-                Profile selected = cmbProfiles.SelectedItem as Profile;
-                profiles.Remove(selected);
-                SaveProfiles();
-                RefreshCombo();
-            }
+            if (cmbProfiles.SelectedItem is not Profile selected) return;
+
+            List<Profile> updatedProfiles = profiles
+                .Where(profile => !ReferenceEquals(profile, selected))
+                .ToList();
+            if (updatedProfiles.Count == profiles.Count) return;
+            if (!TrySaveProfiles(updatedProfiles)) return;
+
+            profiles = updatedProfiles;
+            RefreshCombo();
+            SetProfileFormMessage("Perfil eliminado.", "TextSecondary");
         }
 
         private void LoadProfiles()
@@ -883,18 +960,40 @@ namespace NextDNSModernWPF
             RefreshCombo();
         }
 
-        private void SaveProfiles()
+        private bool TrySaveProfiles(List<Profile> profilesToSave)
         {
+            string temporaryPath = profilesFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                string json = JsonSerializer.Serialize(profiles);
-                File.WriteAllText(profilesFile, json);
+                string json = JsonSerializer.Serialize(profilesToSave);
+                File.WriteAllText(temporaryPath, json, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                File.Move(temporaryPath, profilesFile, overwrite: true);
+                return true;
             }
             catch (Exception exception)
             {
                 DiagnosticLog.WriteManager(DiagnosticEvent.ProfilesSaveFailure, exception);
-                throw;
+                SetProfileFormMessage("No se pudo guardar. El perfil no se agregó ni se cambió en la lista.", "StatusAttention");
+                System.Windows.MessageBox.Show(
+                    this,
+                    "No se guardaron los cambios de perfiles. La lista y el perfil activo no cambiaron.\n\n" + exception.Message,
+                    "No se guardó el perfil",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return false;
             }
+            finally
+            {
+                try { if (File.Exists(temporaryPath)) File.Delete(temporaryPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+        }
+
+        private void SetProfileFormMessage(string message, string foregroundResource)
+        {
+            lblProfileMessage.Text = message;
+            lblProfileMessage.SetResourceReference(TextBlock.ForegroundProperty, foregroundResource);
         }
 
         private void RefreshCombo()

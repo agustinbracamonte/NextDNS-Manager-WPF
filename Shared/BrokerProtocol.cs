@@ -9,10 +9,10 @@ namespace NextDNSManager.Shared;
 
 public static class BrokerProtocol
 {
-    public const int Version = 1;
+    public const int Version = 2;
     public const int MaxMessageBytes = 4096;
     public const string ServiceName = "NextDNSManagerBroker";
-    public const string PipeName = "NextDNSManager.Control.v1";
+    public const string PipeName = "NextDNSManager.Control.v2";
     public static readonly JsonSerializerOptions JsonOptions = new()
     {
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
@@ -58,6 +58,7 @@ public sealed class BrokerRequest
     public string? ProfileId { get; set; }
     public bool ReportClientInfo { get; set; }
     public bool SetupRouter { get; set; }
+    public int? PauseMinutes { get; set; }
 }
 
 public sealed class BrokerResponse
@@ -70,4 +71,5 @@ public sealed class BrokerResponse
     public string? ProfileId { get; set; }
     public bool ReportClientInfo { get; set; }
     public bool SetupRouter { get; set; }
+    public DateTimeOffset? PauseUntilUtc { get; set; }
 }

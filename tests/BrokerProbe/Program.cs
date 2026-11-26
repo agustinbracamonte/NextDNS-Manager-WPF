@@ -23,7 +23,7 @@ internal static class Program
             if (args.Length == 0)
             {
                 await RunOfflineTestsAsync().ConfigureAwait(false);
-                Console.WriteLine($"PASS: {_assertions} offline broker, journal, and profile-switch assertions.");
+                Console.WriteLine($"PASS: {_assertions} offline broker, journal, profile-switch, and pause assertions.");
                 return 0;
             }
 
@@ -51,13 +51,39 @@ internal static class Program
     {
         await TestProtocolRoundTripAsync().ConfigureAwait(false);
         await TestProtocolRejectionsAsync().ConfigureAwait(false);
+        TestCliOwnershipLayout();
         TestRequestValidation();
         await TestServiceStartupCoordinatorAsync().ConfigureAwait(false);
         TestServiceStartupBackoff();
+        TestServiceReconcilePolicy();
+        TestServiceRemovalRecovery();
+        await TestTemporaryPauseAsync().ConfigureAwait(false);
         TestDiagnosticServiceRecord();
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
         TestProfileSwitchJournal();
         TestProfileSwitchSelection();
+    }
+
+    private static void TestCliOwnershipLayout()
+    {
+        string bundledCli = Path.GetFullPath(NextDnsCliOwnershipPolicy.SourceExecutable);
+        string expectedBundledCli = Path.GetFullPath(BrokerPolicy.CliExecutable);
+        string serviceCli = NextDnsCliOwnershipPolicy.InstalledExecutable;
+
+        Check(string.Equals(bundledCli, expectedBundledCli, StringComparison.OrdinalIgnoreCase),
+            "CLI commands use the packaged, hash-pinned executable.");
+        Check(string.Equals(serviceCli, @"C:\Program Files\nextdns\nextdns.exe", StringComparison.OrdinalIgnoreCase),
+            "The owned CLI destination matches the upstream Windows installer path.");
+        Check(!string.Equals(bundledCli, serviceCli, StringComparison.OrdinalIgnoreCase),
+            "The packaged CLI source is distinct from the copy installed by the upstream service installer.");
+        Check(NextDnsCliOwnershipPolicy.IsOwnedServiceImage("\"C:\\Program Files\\nextdns\\nextdns.exe\" run"),
+            "The upstream NextDNS service image path and run argument are recognized.");
+        Check(!NextDnsCliOwnershipPolicy.IsOwnedServiceImage($"\"{bundledCli}\" run"),
+            "The packaged source path is not mistaken for the upstream-installed service copy.");
+        Check(!NextDnsCliOwnershipPolicy.IsOwnedServiceImage($"\"{serviceCli} run"),
+            "A malformed quoted service path is rejected.");
+        Check(!NextDnsCliOwnershipPolicy.IsOwnedServiceImage($"\"{serviceCli}\" run --unexpected"),
+            "Extra service arguments are rejected.");
     }
 
     private static async Task TestServiceStartupCoordinatorAsync()
@@ -329,8 +355,27 @@ internal static class Program
         BrokerRequest actual = await BrokerProtocol.ReadAsync<BrokerRequest>(stream, CancellationToken.None).ConfigureAwait(false);
 
         Check(actual.Version == expected.Version && actual.Operation == expected.Operation &&
-              actual.ProfileId == expected.ProfileId && actual.ReportClientInfo && actual.SetupRouter,
+              actual.ProfileId == expected.ProfileId && actual.ReportClientInfo && actual.SetupRouter && actual.PauseMinutes is null,
             "BrokerProtocol round-trips a valid newline-delimited request.");
+
+        using var pauseStream = new MemoryStream();
+        var expectedPause = new BrokerRequest { Operation = "pause", PauseMinutes = 15 };
+        await BrokerProtocol.WriteAsync(pauseStream, expectedPause, CancellationToken.None).ConfigureAwait(false);
+        pauseStream.Position = 0;
+        BrokerRequest actualPause = await BrokerProtocol.ReadAsync<BrokerRequest>(pauseStream, CancellationToken.None).ConfigureAwait(false);
+        Check(actualPause.Operation == "pause" && actualPause.PauseMinutes == 15,
+            "BrokerProtocol round-trips the temporary pause duration.");
+
+        DateTimeOffset pauseUntil = new(2026, 11, 25, 19, 30, 0, TimeSpan.Zero);
+        using var responseStream = new MemoryStream();
+        await BrokerProtocol.WriteAsync(responseStream, new BrokerResponse
+        {
+            Success = true, State = "paused", PauseUntilUtc = pauseUntil
+        }, CancellationToken.None).ConfigureAwait(false);
+        responseStream.Position = 0;
+        BrokerResponse response = await BrokerProtocol.ReadAsync<BrokerResponse>(responseStream, CancellationToken.None).ConfigureAwait(false);
+        Check(response.State == "paused" && response.PauseUntilUtc == pauseUntil,
+            "BrokerProtocol round-trips the durable pause deadline in status.");
     }
 
     private static async Task TestProtocolRejectionsAsync()
@@ -371,6 +416,9 @@ internal static class Program
     {
         ExpectRequestValid("valid status request", new BrokerRequest { Operation = "status" });
         ExpectRequestValid("valid deactivate request", new BrokerRequest { Operation = "deactivate" });
+        ExpectRequestValid("valid resume request", new BrokerRequest { Operation = "resume" });
+        foreach (int duration in new[] { 5, 15, 30 })
+            ExpectRequestValid("valid temporary pause duration", new BrokerRequest { Operation = "pause", PauseMinutes = duration });
         ExpectRequestValid("valid mixed-case profile ID", new BrokerRequest
         {
             Operation = "activate", ProfileId = "aB12cD", ReportClientInfo = true, SetupRouter = true
@@ -400,10 +448,175 @@ internal static class Program
 
         ExpectRequestInvalid("unknown operation", new BrokerRequest { Operation = "install" });
         ExpectRequestInvalid("null operation", new BrokerRequest { Operation = null! });
+        ExpectRequestInvalid("protocol v1 request rejected", new BrokerRequest { Version = 1, Operation = "status" });
         ExpectRequestInvalid("unsupported protocol version", new BrokerRequest { Version = BrokerProtocol.Version + 1 });
         ExpectRequestInvalid("status with profile parameter", new BrokerRequest { Operation = "status", ProfileId = "abcdef" });
         ExpectRequestInvalid("deactivate with report flag", new BrokerRequest { Operation = "deactivate", ReportClientInfo = true });
         ExpectRequestInvalid("deactivate with router flag", new BrokerRequest { Operation = "deactivate", SetupRouter = true });
+        ExpectRequestInvalid("deactivate with pause duration", new BrokerRequest { Operation = "deactivate", PauseMinutes = 5 });
+        ExpectRequestInvalid("activate with pause duration", new BrokerRequest { Operation = "activate", ProfileId = "abcdef", PauseMinutes = 5 });
+        ExpectRequestInvalid("pause without duration", new BrokerRequest { Operation = "pause" });
+        foreach (int duration in new[] { 0, 1, 10, 60 })
+            ExpectRequestInvalid("invalid temporary pause duration", new BrokerRequest { Operation = "pause", PauseMinutes = duration });
+    }
+
+    private static async Task TestTemporaryPauseAsync()
+    {
+        DateTimeOffset now = new(2026, 11, 25, 12, 0, 0, TimeSpan.FromHours(-3));
+        foreach (int minutes in new[] { 5, 15, 30 })
+        {
+            DateTimeOffset deadline = TemporaryPausePolicy.CreateDeadlineUtc(minutes, now);
+            Check(deadline == now.ToUniversalTime().AddMinutes(minutes),
+                $"{minutes}-minute pause deadline is stored as an absolute UTC time.");
+            Check(TemporaryPausePolicy.GetTimerDelay(deadline, now) == TimeSpan.FromMinutes(minutes),
+                $"{minutes}-minute pause schedules its expiry timer.");
+        }
+
+        DateTimeOffset until = TemporaryPausePolicy.CreateDeadlineUtc(5, now);
+        var active = new TemporaryPauseIntent(true, null);
+        TemporaryPauseIntent paused = TemporaryPausePolicy.ApplyExplicitIntent(
+            active, TemporaryPauseExplicitAction.Pause, until);
+        Check(paused.Enabled && paused.PauseUntilUtc == until,
+            "pausing preserves the wanted-active intent and records a deadline.");
+        Check(TemporaryPausePolicy.GetReconcileAction(true, true, until, now) == TemporaryPauseReconcileAction.KeepPaused,
+            "reconciliation holds protection off before its deadline.");
+        Check(TemporaryPausePolicy.GetReconcileAction(true, true, until, until) == TemporaryPauseReconcileAction.Activate,
+            "reconciliation resumes at the deadline.");
+        Check(TemporaryPausePolicy.GetReconcileAction(false, true, until, now) == TemporaryPauseReconcileAction.Deactivate,
+            "an explicit off intent wins over a pending pause.");
+        Check(TemporaryPausePolicy.GetReconcileAction(true, false, null, now) == TemporaryPauseReconcileAction.Deactivate &&
+              TemporaryPausePolicy.GetReconcileAction(true, false, until, now) == TemporaryPauseReconcileAction.Deactivate,
+            "a missing or invalid saved configuration fails closed, even with a future pause deadline.");
+        Check(TemporaryPausePolicy.GetReconcileAction(true, true, null, now) == TemporaryPauseReconcileAction.Activate,
+            "a valid saved configuration allows active-state reconciliation.");
+        Check(TemporaryPausePolicy.GetTimerDelay(null, now) == Timeout.InfiniteTimeSpan &&
+              TemporaryPausePolicy.GetTimerDelay(until, until) == Timeout.InfiniteTimeSpan,
+            "no pause or an elapsed pause leaves no repeated timer armed.");
+
+        TemporaryPauseIntent resumed = TemporaryPausePolicy.ApplyExplicitIntent(
+            paused, TemporaryPauseExplicitAction.Resume);
+        TemporaryPauseIntent activated = TemporaryPausePolicy.ApplyExplicitIntent(
+            paused, TemporaryPauseExplicitAction.Activate);
+        TemporaryPauseIntent deactivated = TemporaryPausePolicy.ApplyExplicitIntent(
+            paused, TemporaryPauseExplicitAction.Deactivate);
+        Check(resumed.Enabled && resumed.PauseUntilUtc is null && activated.Enabled && activated.PauseUntilUtc is null,
+            "explicit resume and activation cancel the pending deadline.");
+        Check(!deactivated.Enabled && deactivated.PauseUntilUtc is null,
+            "explicit deactivation cancels the deadline and remains off.");
+
+        var order = new List<string>();
+        DateTimeOffset? persistedDeadline = null;
+        await ExpectFailureAsync("pause restore failure leaves a durable deadline", async () =>
+        {
+            await TemporaryPauseTransaction.PauseAsync(until,
+                deadline => { order.Add("persist-deadline"); persistedDeadline = deadline; return Task.CompletedTask; },
+                () => { order.Add("restore-dns"); throw new InvalidOperationException("injected restore failure"); }).ConfigureAwait(false);
+        }, typeof(InvalidOperationException)).ConfigureAwait(false);
+        Check(order.SequenceEqual(new[] { "persist-deadline", "restore-dns" }) && persistedDeadline == until,
+            "pause persists its deadline before attempting DNS restoration.");
+        Check(TemporaryPausePolicy.GetReconcileAction(true, true, persistedDeadline, now) == TemporaryPauseReconcileAction.KeepPaused,
+            "a failed pause restoration remains safely paused and can be retried by the service.");
+
+        order.Clear();
+        persistedDeadline = until;
+        bool wanted = true;
+        await ExpectFailureAsync("explicit deactivation remains persisted after DNS failure", async () =>
+        {
+            await TemporaryPauseTransaction.DeactivateAsync(
+                () => { order.Add("persist-off"); wanted = false; return Task.CompletedTask; },
+                () => { order.Add("clear-deadline"); persistedDeadline = null; return Task.CompletedTask; },
+                () => { order.Add("restore-dns"); throw new InvalidOperationException("injected restore failure"); }).ConfigureAwait(false);
+        }, typeof(InvalidOperationException)).ConfigureAwait(false);
+        Check(order.SequenceEqual(new[] { "persist-off", "clear-deadline", "restore-dns" }) && !wanted && persistedDeadline is null,
+            "explicit deactivation persists off before DNS restoration and cannot auto-resume.");
+
+        order.Clear();
+        persistedDeadline = until;
+        await ExpectFailureAsync("resume failure remains retryable", async () =>
+        {
+            await TemporaryPauseTransaction.ResumeAsync(
+                () => { order.Add("persist-resume-due"); persistedDeadline = now; return Task.CompletedTask; },
+                () => { order.Add("enable-dns"); throw new InvalidOperationException("injected enable failure"); },
+                () => { order.Add("clear-deadline"); persistedDeadline = null; return Task.CompletedTask; }).ConfigureAwait(false);
+        }, typeof(InvalidOperationException)).ConfigureAwait(false);
+        Check(order.SequenceEqual(new[] { "persist-resume-due", "enable-dns" }) && persistedDeadline == now &&
+              TemporaryPausePolicy.GetReconcileAction(true, true, persistedDeadline, now) == TemporaryPauseReconcileAction.Activate,
+            "a failed resume keeps an expired durable marker for service retry.");
+
+        order.Clear();
+        await TemporaryPauseTransaction.ResumeAsync(
+            () => { order.Add("persist-resume-due"); persistedDeadline = now; return Task.CompletedTask; },
+            () => { order.Add("enable-dns"); return Task.CompletedTask; },
+            () => { order.Add("clear-deadline"); persistedDeadline = null; return Task.CompletedTask; }).ConfigureAwait(false);
+        Check(order.SequenceEqual(new[] { "persist-resume-due", "enable-dns", "clear-deadline" }) && persistedDeadline is null,
+            "a successful resume clears the durable marker only after DNS is active.");
+    }
+
+    private static void TestServiceReconcilePolicy()
+    {
+        DateTimeOffset now = new(2026, 11, 25, 12, 0, 0, TimeSpan.Zero);
+        DateTimeOffset retryAt = now.AddSeconds(10);
+        Check(!ServiceReconcilePolicy.RetryGateElapsed(retryAt, now) &&
+              ServiceReconcilePolicy.RetryGateElapsed(retryAt, retryAt),
+            "a reconciliation retry remains gated until its scheduled time.");
+        Check(ServiceReconcilePolicy.DebounceDelay(TimeSpan.Zero, retryAt, now) == TimeSpan.FromSeconds(10) &&
+              ServiceReconcilePolicy.DebounceDelay(TimeSpan.FromSeconds(2), retryAt, now) == TimeSpan.FromSeconds(10) &&
+              ServiceReconcilePolicy.DebounceDelay(TimeSpan.FromSeconds(2), null, now) == TimeSpan.FromSeconds(2),
+            "pending signals and network debounce cannot shorten an active retry backoff.");
+        Check(!ServiceReconcilePolicy.ShouldDrainPendingImmediately(succeeded: false, pending: true) &&
+              ServiceReconcilePolicy.ShouldDrainPendingImmediately(succeeded: true, pending: true) &&
+              !ServiceReconcilePolicy.ShouldDrainPendingImmediately(succeeded: true, pending: false),
+            "only a successful reconciliation immediately drains coalesced signals.");
+    }
+
+    private static void TestServiceRemovalRecovery()
+    {
+        var calls = new List<string>();
+        var removalFailure = new InvalidOperationException("injected DNS restoration failure");
+        Exception? result = null;
+        try
+        {
+            ServiceRemovalRecovery.Run(
+                brokerExisted: true,
+                removeOwnedClient: () => { calls.Add("remove"); throw removalFailure; },
+                restartBroker: () => calls.Add("restart"));
+        }
+        catch (Exception error) { result = error; }
+
+        Check(calls.SequenceEqual(new[] { "remove", "restart" }) &&
+              result is InvalidOperationException && ReferenceEquals(result.InnerException, removalFailure),
+            "failed removal restarts the existing broker and preserves the original failure.");
+
+        calls.Clear();
+        var restartFailure = new InvalidOperationException("injected broker start failure");
+        result = null;
+        try
+        {
+            ServiceRemovalRecovery.Run(
+                brokerExisted: true,
+                removeOwnedClient: () => { calls.Add("remove"); throw removalFailure; },
+                restartBroker: () => { calls.Add("restart"); throw restartFailure; });
+        }
+        catch (Exception error) { result = error; }
+
+        Check(calls.SequenceEqual(new[] { "remove", "restart" }) &&
+              result is AggregateException aggregate && aggregate.InnerExceptions.Contains(removalFailure) &&
+              aggregate.InnerExceptions.Contains(restartFailure),
+            "a failed broker restart reports both failures while leaving recovery data untouched.");
+
+        calls.Clear();
+        result = null;
+        try
+        {
+            ServiceRemovalRecovery.Run(
+                brokerExisted: false,
+                removeOwnedClient: () => { calls.Add("remove"); throw removalFailure; },
+                restartBroker: () => calls.Add("restart"));
+        }
+        catch (Exception error) { result = error; }
+
+        Check(calls.SequenceEqual(new[] { "remove" }) && ReferenceEquals(result, removalFailure),
+            "failed removal does not start a broker that was not registered.");
     }
 
     private static async Task<int> RunStatusAsync()
@@ -667,7 +880,8 @@ internal static class Program
     private static bool SameStatus(BrokerResponse left, BrokerResponse right) =>
         left.Success == right.Success && left.Active == right.Active &&
         string.Equals(left.State, right.State, StringComparison.Ordinal) &&
-        string.Equals(left.ProfileId, right.ProfileId, StringComparison.Ordinal);
+        string.Equals(left.ProfileId, right.ProfileId, StringComparison.Ordinal) &&
+        left.PauseUntilUtc == right.PauseUntilUtc;
 
     private static bool IsAdministrator()
     {
@@ -687,6 +901,8 @@ internal static class Program
         Console.WriteLine($"Success: {response.Success.ToString().ToLowerInvariant()}");
         Console.WriteLine($"Active: {response.Active.ToString().ToLowerInvariant()}");
         Console.WriteLine($"State: {response.State}");
+        if (response.PauseUntilUtc is { } pauseUntil)
+            Console.WriteLine($"Pause until (UTC): {pauseUntil.ToUniversalTime():O}");
         if (!string.IsNullOrWhiteSpace(response.Error)) Console.WriteLine($"Error: {response.Error}");
         // Deliberately omit ProfileId from all probe output.
     }

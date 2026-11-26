@@ -92,13 +92,16 @@ namespace NextDNSModernWPF
                 return;
 
             Application? application = _application;
-            if (application == null || application.Dispatcher.HasShutdownStarted)
+            if (application == null || application.Dispatcher.HasShutdownStarted || application.Dispatcher.HasShutdownFinished)
                 return;
 
             if (application.Dispatcher.CheckAccess())
                 RefreshFromWindows();
             else
-                _ = application.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(RefreshFromWindows));
+            {
+                try { _ = application.Dispatcher.BeginInvoke(DispatcherPriority.Normal, new Action(RefreshFromWindows)); }
+                catch (InvalidOperationException) { }
+            }
         }
 
         private static void RefreshFromWindows()
@@ -148,10 +151,10 @@ namespace NextDNSModernWPF
             {
                 object? value = Registry.CurrentUser.OpenSubKey(SettingsPath, writable: false)?
                     .GetValue(PreferenceValueName);
-                if (value is string raw && Enum.TryParse(raw, ignoreCase: true, out ThemePreference preference))
+                if (value is string raw && Enum.TryParse(raw, ignoreCase: true, out ThemePreference preference) && Enum.IsDefined(preference))
                     return preference;
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
             {
                 // Fall back to automatic mode if a per-user setting cannot be read.
             }
@@ -166,7 +169,7 @@ namespace NextDNSModernWPF
                 using RegistryKey key = Registry.CurrentUser.CreateSubKey(SettingsPath, writable: true);
                 key.SetValue(PreferenceValueName, preference.ToString(), RegistryValueKind.String);
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException)
             {
                 // Keep the in-memory preference active if persistence is unavailable.
             }
@@ -179,7 +182,7 @@ namespace NextDNSModernWPF
                 object? value = Registry.GetValue(WindowsPersonalizationPath, "AppsUseLightTheme", 0);
                 return Convert.ToInt32(value) != 0;
             }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or FormatException or InvalidCastException or OverflowException)
+            catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or System.IO.IOException or FormatException or InvalidCastException or OverflowException)
             {
                 // Preserve the current dark appearance when Windows has no readable setting.
                 return false;

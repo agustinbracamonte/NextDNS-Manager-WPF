@@ -1,13 +1,16 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Color x:Key="CardColorValue">#FFFFFFFF</Color>
-    <SolidColorBrush x:Key="WindowSurface" Color="#F8F4F7FB"/>
+    <Color x:Key="CardColorValue">#BFEFF3F7</Color>
+    <SolidColorBrush x:Key="WindowSurface" Color="#E4E8EEF4"/>
+    <SolidColorBrush x:Key="WindowSurfaceBackdrop" Color="#A6E8EEF4"/>
+    <SolidColorBrush x:Key="WindowSurfaceFallback" Color="#FFE8EEF4"/>
     <SolidColorBrush x:Key="CardColor" Color="{StaticResource CardColorValue}"/>
+    <SolidColorBrush x:Key="PopupSurface" Color="#FFF4F6F9"/>
     <SolidColorBrush x:Key="NextBlue" Color="#FF1F68C1"/>
     <SolidColorBrush x:Key="NextRed" Color="#FFB3261E"/>
     <SolidColorBrush x:Key="TextPrimary" Color="#FF1B1F24"/>
     <SolidColorBrush x:Key="TextSecondary" Color="#FF5F6B76"/>
-    <SolidColorBrush x:Key="BorderColor" Color="#FFD4DBE5"/>
+    <SolidColorBrush x:Key="BorderColor" Color="#8E8291A0"/>
     <SolidColorBrush x:Key="FocusBorderColor" Color="#FF1F68C1"/>
 
     <SolidColorBrush x:Key="WindowButtonHover" Color="#FFE7EBF0"/>
@@ -23,7 +26,7 @@
     <SolidColorBrush x:Key="ComboItemSelectedForeground" Color="#FF1B1F24"/>
     <SolidColorBrush x:Key="ComboItemHoverForeground" Color="#FF1B1F24"/>
     <SolidColorBrush x:Key="ComboHoverBorder" Color="#FFA6B4C4"/>
-    <SolidColorBrush x:Key="InputColor" Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="InputColor" Color="#DDE6EDF4"/>
     <SolidColorBrush x:Key="InputPlaceholder" Color="#FF697586"/>
     <SolidColorBrush x:Key="InputHoverBorder" Color="#FF9AA8B8"/>
 
@@ -37,4 +40,8 @@
     <SolidColorBrush x:Key="ActionButtonDestructiveForeground" Color="#FFB3261E"/>
     <SolidColorBrush x:Key="StatusAttention" Color="#FF9A5700"/>
     <SolidColorBrush x:Key="StatusProtected" Color="#FF1B7F3A"/>
+    <SolidColorBrush x:Key="NeutralPillBackground" Color="#D2E3EAF0"/>
+    <SolidColorBrush x:Key="ProtectedPillBackground" Color="#401B7F3A"/>
+    <SolidColorBrush x:Key="AttentionPillBackground" Color="#289A5700"/>
+    <SolidColorBrush x:Key="ToggleOffBackground" Color="#B8D8E0E9"/>
 </ResourceDictionary>
