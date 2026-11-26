@@ -144,12 +144,10 @@ internal static class UpdateLaunchCoordinator
                 verificationTimeout.Token);
             await SendStatusAsync(pipe, 3).ConfigureAwait(false);
 
-            string confirmation =
-                $"La versión {verifiedInstaller.Version} está lista. El instalador no tiene firma digital; SHA-256 solo comprueba que coincide con SHA256SUMS y no autentica al publicador.\n\n" +
-                "Si continúas, NextDNS Manager se cerrará, Windows pedirá permisos y la actualización se instalará automáticamente. ¿Continuar?";
+            string confirmation = LocalizationManager.T("Code.Update.LaunchConfirmation", verifiedInstaller.Version);
             MessageBoxResult confirmationResult = System.Windows.MessageBox.Show(
                 confirmation,
-                "Confirmar instalación de NextDNS Manager",
+                LocalizationManager.Get("Code.Update.LaunchConfirmationTitle"),
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
                 MessageBoxResult.No);
@@ -179,15 +177,15 @@ internal static class UpdateLaunchCoordinator
 
             verifiedInstaller.EnsureStillVerified();
             using Process installerProcess = Process.Start(verifiedInstaller.CreateElevatedInstallerStartInfo())
-                ?? throw new InvalidOperationException("Windows no inició el instalador.");
+                ?? throw new InvalidOperationException(LocalizationManager.Get("Code.Error.Update.LaunchFailed"));
             installerStarted = true;
 
             await installerProcess.WaitForExitAsync().ConfigureAwait(false);
             if (installerProcess.ExitCode != 0)
             {
                 System.Windows.MessageBox.Show(
-                    $"El instalador terminó con el código {installerProcess.ExitCode}. Puedes volver a abrir NextDNS Manager e intentarlo de nuevo.",
-                    "Actualización de NextDNS Manager",
+                    LocalizationManager.T("Code.Update.InstallerExitCode", installerProcess.ExitCode),
+                    LocalizationManager.Get("Code.Update.LaunchTitle"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
                 TryRestartInstalledManager();
@@ -201,8 +199,8 @@ internal static class UpdateLaunchCoordinator
         catch (Win32Exception exception) when (exception.NativeErrorCode == 1223)
         {
             System.Windows.MessageBox.Show(
-                "Se canceló la solicitud de permisos de Windows. No se instaló la actualización; puedes volver a abrir NextDNS Manager.",
-                "Actualización cancelada",
+                LocalizationManager.Get("Code.Update.UacCancelled"),
+                LocalizationManager.Get("Code.Update.CancelledTitle"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
             TryRestartInstalledManager();
@@ -211,8 +209,8 @@ internal static class UpdateLaunchCoordinator
         catch
         {
             System.Windows.MessageBox.Show(
-                "No se pudo iniciar o completar el instalador. No se modificó el DNS. Puedes volver a abrir NextDNS Manager e intentarlo de nuevo.",
-                "Actualización de NextDNS Manager",
+                LocalizationManager.Get("Code.Update.LaunchFailedMessage"),
+                LocalizationManager.Get("Code.Update.LaunchTitle"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Warning);
             if (!installerStarted)

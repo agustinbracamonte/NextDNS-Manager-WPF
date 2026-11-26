@@ -23,7 +23,7 @@
 - **Allow/block lists:** view, add, enable, disable, import, and export entries.
 - **DNS activity:** inspect queries by profile or device, filter by domain, result, or local date and time, and follow live activity.
 - **Remote settings:** read and edit supported options exposed by the NextDNS API.
-- **Appearance and diagnostics:** automatic, light, and dark themes; sanitized diagnostic logs; and in-app update checks.
+- **Appearance and diagnostics:** automatic, light, and dark themes; Spanish, English, French, Portuguese, and German with manual selection or Windows language detection; sanitized diagnostic logs; and in-app update checks.
 
 Remote features require a valid NextDNS API key and depend on the account's permissions, configuration, and API availability. Local protection controls do not require an API key.
 

@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:NextDNSModernWPF"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-        Title="NextDNS Manager 2.2" Height="560" Width="800" MinHeight="560" MinWidth="680"
+        Title="NextDNS Manager 2.3" Language="{Binding WindowLanguage, Source={x:Static local:LocalizationManager.Instance}}" Height="560" Width="800" MinHeight="560" MinWidth="680"
         WindowStartupLocation="Manual" Loaded="MainWindow_ApplyResponsiveSize"
         SourceInitialized="MainWindow_BackdropSourceInitialized"
         ResizeMode="CanResize"
@@ -1025,15 +1025,15 @@
                     <Setter Property="BorderBrush" Value="{DynamicResource BorderColor}"/>
                     <Setter Property="BorderThickness" Value="1"/>
                     <Style.Triggers>
-                        <DataTrigger Binding="{Binding Text, ElementName=lblStatus}" Value="PROTEGIDO">
+                        <DataTrigger Binding="{Binding Tag, ElementName=lblStatus}" Value="Protected">
                             <Setter Property="Background" Value="{DynamicResource ProtectedPillBackground}"/>
                             <Setter Property="BorderBrush" Value="{DynamicResource StatusProtected}"/>
                         </DataTrigger>
-                        <DataTrigger Binding="{Binding Text, ElementName=lblStatus}" Value="PAUSADO">
+                        <DataTrigger Binding="{Binding Tag, ElementName=lblStatus}" Value="Paused">
                             <Setter Property="Background" Value="{DynamicResource AttentionPillBackground}"/>
                             <Setter Property="BorderBrush" Value="{DynamicResource StatusAttention}"/>
                         </DataTrigger>
-                        <DataTrigger Binding="{Binding Text, ElementName=lblStatus}" Value="REQUIERE ATENCIÓN">
+                        <DataTrigger Binding="{Binding Tag, ElementName=lblStatus}" Value="NeedsAttention">
                             <Setter Property="Background" Value="{DynamicResource AttentionPillBackground}"/>
                             <Setter Property="BorderBrush" Value="{DynamicResource StatusAttention}"/>
                         </DataTrigger>
@@ -1054,13 +1054,15 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="False">
                     <Path Data="M10,1 L18,4 L18,10 C18,15 14,19 10,22 C6,19 2,15 2,10 L2,4 Z" Width="22" Height="24" Stretch="Fill" Stroke="{DynamicResource NextBlue}" StrokeThickness="2" Margin="0,0,10,0"/>
-                    <TextBlock Text="NextDNS Manager 2.2" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Text="NextDNS Manager 2.3" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                 </StackPanel>
-                <ComboBox x:Name="cmbTheme" Grid.Column="1" HorizontalAlignment="Center" Width="146" Height="32" VerticalAlignment="Center" FontSize="13" ToolTip="Apariencia de la aplicación" WindowChrome.IsHitTestVisibleInChrome="True">
-                    <ComboBoxItem Content="Automático" Tag="System" Style="{StaticResource DarkItemStyle}"/>
-                    <ComboBoxItem Content="Claro" Tag="Light" Style="{StaticResource DarkItemStyle}"/>
-                    <ComboBoxItem Content="Oscuro" Tag="Dark" Style="{StaticResource DarkItemStyle}"/>
-                </ComboBox>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <ComboBox x:Name="cmbTheme" Width="142" Height="32" VerticalAlignment="Center" FontSize="13" ToolTip="{Binding [Main.Ui.Theme.Tooltip], Source={x:Static local:LocalizationManager.Instance}}">
+                        <ComboBoxItem Content="{Binding [Main.Ui.Theme.Auto], Source={x:Static local:LocalizationManager.Instance}}" Tag="System" Style="{StaticResource DarkItemStyle}"/>
+                        <ComboBoxItem Content="{Binding [Main.Ui.Theme.Light], Source={x:Static local:LocalizationManager.Instance}}" Tag="Light" Style="{StaticResource DarkItemStyle}"/>
+                        <ComboBoxItem Content="{Binding [Main.Ui.Theme.Dark], Source={x:Static local:LocalizationManager.Instance}}" Tag="Dark" Style="{StaticResource DarkItemStyle}"/>
+                    </ComboBox>
+                </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Top" WindowChrome.IsHitTestVisibleInChrome="True">
                     <Button Style="{StaticResource WindowBtnStyle}" Click="BtnMinimize_Click">
                         <Path Data="M0,8 L10,8" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" StrokeThickness="1"/>
@@ -1072,11 +1074,11 @@
             </Grid>
 
                         <StackPanel Grid.Row="1" Margin="18,0,18,6">
-                            <Button x:Name="btnUpdate" Content="Actualización disponible" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,4" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
+                            <Button x:Name="btnUpdate" Content="{Binding [Main.Ui.Update.Available], Source={x:Static local:LocalizationManager.Instance}}" Visibility="Collapsed" Height="28" Padding="10,0" HorizontalAlignment="Left" Margin="0,0,0,4" Style="{StaticResource UpdateBtnStyle}" Click="BtnUpdate_Click"/>
                             <StackPanel x:Name="updateProgressPanel" Visibility="Collapsed" Margin="0,0,0,8">
-                                <TextBlock x:Name="updateProgressText" Text="Preparando descarga…" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="updateProgressText" Text="{Binding [Main.Ui.Update.Preparing], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" FontSize="11" TextWrapping="Wrap"/>
                                 <ProgressBar x:Name="updateProgressBar" Minimum="0" Maximum="100" Value="0" Height="5" Margin="0,6,0,5"/>
-                                <Button x:Name="btnCancelUpdate" Content="Cancelar descarga" Style="{StaticResource UpdateCancelBtnStyle}" HorizontalAlignment="Left" Height="24" Click="BtnCancelUpdate_Click"/>
+                                <Button x:Name="btnCancelUpdate" Content="{Binding [Main.Ui.Update.Cancel], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource UpdateCancelBtnStyle}" HorizontalAlignment="Left" Height="24" Click="BtnCancelUpdate_Click"/>
                             </StackPanel>
                         </StackPanel>
 
@@ -1085,7 +1087,7 @@
                     <TabItem.Header>
                         <StackPanel Orientation="Horizontal">
                             <Path Data="M1,8 L9,1 L17,8 M4,7 L4,16 L7,16 L7,11 L11,11 L11,16 L14,16 L14,7" Width="20" Height="19" Stretch="Fill" Fill="Transparent" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                            <TextBlock Text="Inicio" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Tab.Home], Source={x:Static local:LocalizationManager.Instance}}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
                     <ScrollViewer x:Name="homeScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
@@ -1113,7 +1115,7 @@
                                     <Ellipse Stroke="{Binding Foreground, ElementName=lblStatus}" StrokeThickness="1.6"/>
                                     <Path Data="M4,11 L9,16 L18,6" Stroke="{Binding Foreground, ElementName=lblStatus}" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
                                 </Grid>
-                                <TextBlock x:Name="lblStatus" Text="DESCONOCIDO" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="lblStatus" Text="{Binding [Main.Ui.Home.UnknownStatus], Source={x:Static local:LocalizationManager.Instance}}" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Border>
 
@@ -1124,21 +1126,21 @@
                                 <ColumnDefinition Width="8"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Perfil activo:" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Common.ActiveProfile], Source={x:Static local:LocalizationManager.Instance}}" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                             <ComboBox x:Name="cmbProfiles" Grid.Column="1" Height="44" VerticalContentAlignment="Center" Padding="10,0" FontSize="14"/>
-                            <Button x:Name="btnManageProfiles" Grid.Column="3" Content="Administrar perfiles" Height="32" Padding="10,0" ToolTip="Abrir la gestión de perfiles locales" AutomationProperties.Name="Administrar perfiles locales" Style="{StaticResource QuietActionButton}" Click="ManageProfiles_Click"/>
+                            <Button x:Name="btnManageProfiles" Grid.Column="3" Content="{Binding [Main.Ui.Home.ManageProfiles], Source={x:Static local:LocalizationManager.Instance}}" Height="32" Padding="10,0" ToolTip="{Binding [Main.Ui.Home.ManageProfilesTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Home.ManageProfilesAccessible], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" Click="ManageProfiles_Click"/>
                         </Grid>
 
                         <Grid Grid.Row="3" Margin="0,0,0,14">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="142"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                            <TextBlock Text="DNS configurado:" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Home.ConfiguredDns], Source={x:Static local:LocalizationManager.Instance}}" FontSize="15" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                             <Border Grid.Column="1" VerticalAlignment="Center" Background="{DynamicResource CardColor}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="10" Padding="10,7">
                                 <StackPanel x:Name="HomeNetworkHost"/>
                             </Border>
                         </Grid>
 
                         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,4">
-                            <Button x:Name="btnAction" Content="ACTIVAR" Width="220" Height="46" Style="{StaticResource RoundedBtn}" Click="BtnAction_Click"/>
+                            <Button x:Name="btnAction" Content="{Binding [Main.Ui.Home.Activate], Source={x:Static local:LocalizationManager.Instance}}" Width="220" Height="46" Style="{StaticResource RoundedBtn}" Click="BtnAction_Click"/>
                             <StackPanel x:Name="HomePauseHost" Width="184" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="8,0,0,0">
                                 <StackPanel.Resources>
                                     <Style x:Key="QuietActionButton" TargetType="Button" BasedOn="{StaticResource UpdateBtnStyle}">
@@ -1154,7 +1156,7 @@
                             <Border Height="1" Background="{DynamicResource BorderColor}" VerticalAlignment="Top"/>
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,8,0,0">
                                 <Ellipse x:Name="infoIndicator" Width="6" Height="6" Fill="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                <TextBlock x:Name="lblInfo" Text="Verificando servicio..." FontSize="13" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"/>
+                                <TextBlock x:Name="lblInfo" Text="{Binding [Main.Ui.Home.VerifyingService], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center"/>
                             </StackPanel>
                         </Grid>
                     </Grid>
@@ -1174,18 +1176,18 @@
                                 <Ellipse Grid.Row="2" Width="2.5" Height="2.5" Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" VerticalAlignment="Center"/>
                                 <Border Grid.Row="2" Grid.Column="1" Height="1.2" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" VerticalAlignment="Center"/>
                             </Grid>
-                            <TextBlock Text="Listas" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Tab.Lists], Source={x:Static local:LocalizationManager.Instance}}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
                     <ScrollViewer x:Name="listsScrollViewer" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <StackPanel>
                             <Grid Margin="0,0,0,8">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <TextBlock Text="Perfil activo:" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding [Main.Ui.Common.ActiveProfile], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                 <ComboBox x:Name="cmbListsProfile" Grid.Column="2" ItemsSource="{Binding ItemsSource, ElementName=cmbApiProfile}" SelectedItem="{Binding SelectedItem, ElementName=cmbApiProfile, Mode=TwoWay}" DisplayMemberPath="Name" IsEnabled="{Binding IsEnabled, ElementName=cmbApiProfile}" Height="34"/>
-                                <Button x:Name="btnRefreshDomainLists" Grid.Column="4" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="32" Height="30" Padding="0" ToolTip="Actualizar listas" AutomationProperties.Name="Actualizar listas" VerticalAlignment="Center" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
+                                <Button x:Name="btnRefreshDomainLists" Grid.Column="4" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="32" Height="30" Padding="0" ToolTip="{Binding [Main.Ui.Lists.RefreshTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.RefreshAccessible], Source={x:Static local:LocalizationManager.Instance}}" VerticalAlignment="Center" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
                             </Grid>
-                            <TextBlock x:Name="lblListsMessage" Text="Conecta la API para consultar y editar estas listas." FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="2,2,0,8"/>
+                            <TextBlock x:Name="lblListsMessage" Text="{Binding [Main.Ui.Lists.ConnectApi], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="2,2,0,8"/>
 
                             <StackPanel>
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CornerRadius="6" Padding="6" Margin="0,0,0,6">
@@ -1195,18 +1197,18 @@
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <Grid Width="18" Height="18" VerticalAlignment="Center"><Ellipse Stroke="{DynamicResource StatusProtected}" StrokeThickness="1.5"/><Path Data="M4,9 L7.5,12.5 L14,5.5" Stroke="{DynamicResource StatusProtected}" StrokeThickness="1.6"/></Grid>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Permitidos" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Lists.Allowed], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
                                             <TextBlock Text="(" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
                                             <TextBlock x:Name="lblAllowListCount" Text="—" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                                             <TextBlock Text=")" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
-                                        <Button x:Name="btnImportAllowedFile" Grid.Column="4" Content="Importar" Width="72" Height="28" ToolTip="Importar archivo a la lista permitida" AutomationProperties.Name="Importar archivo a la lista permitida" IsEnabled="{Binding IsEnabled, ElementName=btnOpenImportFile}" Style="{StaticResource QuietActionButton}"/>
-                                        <Button x:Name="btnExportAllowedList" Grid.Column="6" Content="Exportar" Width="72" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
+                                        <Button x:Name="btnImportAllowedFile" Grid.Column="4" Content="{Binding [Main.Ui.Lists.Import], Source={x:Static local:LocalizationManager.Instance}}" Width="72" Height="28" ToolTip="{Binding [Main.Ui.Lists.AllowedImportTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.AllowedImportAccessible], Source={x:Static local:LocalizationManager.Instance}}" IsEnabled="{Binding IsEnabled, ElementName=btnOpenImportFile}" Style="{StaticResource QuietActionButton}"/>
+                                        <Button x:Name="btnExportAllowedList" Grid.Column="6" Content="{Binding [Main.Ui.Lists.Export], Source={x:Static local:LocalizationManager.Instance}}" Width="72" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
                                         </Grid>
                                         <Grid Grid.Row="1" Margin="2,0,2,6">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                            <TextBox x:Name="txtAllowedDomain" Tag="Dominio para permitir" Height="36" IsEnabled="{Binding IsEnabled, ElementName=txtListDomain}" ToolTip="Escribe un dominio o URL para añadir a Permitidos." AutomationProperties.Name="Dominio para permitir" AutomationProperties.HelpText="El texto se añadirá a la lista de dominios permitidos." TextChanged="AllowedDomainInput_TextChanged"/>
-                                            <Button x:Name="btnAddAllowedDomain" Grid.Column="2" Content="+ Añadir" Width="82" Height="32" Margin="0" ToolTip="Añadir dominio a Permitidos" AutomationProperties.Name="Añadir a Permitidos" Style="{StaticResource QuietActionButton}" IsEnabled="False" Click="AllowedDomainAddRequested" IsEnabledChanged="DomainAddButton_IsEnabledChanged"/>
+                                            <TextBox x:Name="txtAllowedDomain" Tag="{Binding [Main.Ui.Lists.AllowedPlaceholder], Source={x:Static local:LocalizationManager.Instance}}" Height="36" IsEnabled="{Binding IsEnabled, ElementName=txtListDomain}" ToolTip="{Binding [Main.Ui.Lists.AllowedTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.AllowedAccessible], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.HelpText="{Binding [Main.Ui.Lists.AllowedHelp], Source={x:Static local:LocalizationManager.Instance}}" TextChanged="AllowedDomainInput_TextChanged"/>
+                                            <Button x:Name="btnAddAllowedDomain" Grid.Column="2" Content="{Binding [Main.Ui.Lists.Add], Source={x:Static local:LocalizationManager.Instance}}" Width="82" Height="32" Margin="0" ToolTip="{Binding [Main.Ui.Lists.AllowedAddTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.AllowedAddAccessible], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" IsEnabled="False" Click="AllowedDomainAddRequested" IsEnabledChanged="DomainAddButton_IsEnabledChanged"/>
                                         </Grid>
                                         <Grid Grid.Row="2">
                                             <ListBox x:Name="lstAllowedDomains" Style="{StaticResource DomainListPreviewBox}" MinHeight="70" MaxHeight="112">
@@ -1223,14 +1225,14 @@
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                                                                 <Button Style="{StaticResource DomainSwitchButton}" Margin="8,0,0,0" Click="AllowedDomainSwitch_Click"/>
-                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="Eliminar este dominio" AutomationProperties.Name="Eliminar dominio" Click="AllowedDomainRemove_Click"/>
+                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="{Binding [Main.Ui.Lists.RemoveDomainTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.RemoveDomainAccessible], Source={x:Static local:LocalizationManager.Instance}}" Click="AllowedDomainRemove_Click"/>
                                                             </StackPanel>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ListBox.ItemTemplate>
                                             </ListBox>
                                             <StackPanel x:Name="pnlAllowedEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                                                <TextBlock Text="Los dominios permitidos aparecerán aquí." FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Lists.AllowedEmpty], Source={x:Static local:LocalizationManager.Instance}}" FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
                                         </Grid>
                                     </Grid>
@@ -1243,18 +1245,18 @@
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="6"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                         <Grid Width="18" Height="18" VerticalAlignment="Center"><Ellipse Stroke="{DynamicResource NextRed}" StrokeThickness="1.5"/><Path Data="M5,5 L13,13 M13,5 L5,13" Stroke="{DynamicResource NextRed}" StrokeThickness="1.6"/></Grid>
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="Bloqueados" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Lists.Blocked], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}"/>
                                             <TextBlock Text="(" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="6,0,0,0"/>
                                             <TextBlock x:Name="lblBlockListCount" Text="—" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                                             <TextBlock Text=")" FontSize="12" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
-                                        <Button x:Name="btnImportBlockedFile" Grid.Column="4" Content="Importar" Width="72" Height="28" ToolTip="Importar archivo a la lista bloqueada" AutomationProperties.Name="Importar archivo a la lista bloqueada" IsEnabled="{Binding IsEnabled, ElementName=btnOpenImportFile}" Style="{StaticResource QuietActionButton}"/>
-                                        <Button x:Name="btnExportBlockedList" Grid.Column="6" Content="Exportar" Width="72" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
+                                        <Button x:Name="btnImportBlockedFile" Grid.Column="4" Content="{Binding [Main.Ui.Lists.Import], Source={x:Static local:LocalizationManager.Instance}}" Width="72" Height="28" ToolTip="{Binding [Main.Ui.Lists.BlockedImportTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.BlockedImportAccessible], Source={x:Static local:LocalizationManager.Instance}}" IsEnabled="{Binding IsEnabled, ElementName=btnOpenImportFile}" Style="{StaticResource QuietActionButton}"/>
+                                        <Button x:Name="btnExportBlockedList" Grid.Column="6" Content="{Binding [Main.Ui.Lists.Export], Source={x:Static local:LocalizationManager.Instance}}" Width="72" Height="28" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
                                         </Grid>
                                         <Grid Grid.Row="1" Margin="2,0,2,6">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                            <TextBox x:Name="txtBlockedDomain" Tag="Dominio para bloquear" Height="36" IsEnabled="{Binding IsEnabled, ElementName=txtListDomain}" ToolTip="Escribe un dominio o URL para añadir a Bloqueados." AutomationProperties.Name="Dominio para bloquear" AutomationProperties.HelpText="El texto se añadirá a la lista de dominios bloqueados." TextChanged="BlockedDomainInput_TextChanged"/>
-                                            <Button x:Name="btnAddBlockedDomain" Grid.Column="2" Content="+ Añadir" Width="82" Height="32" Margin="0" ToolTip="Añadir dominio a Bloqueados" AutomationProperties.Name="Añadir a Bloqueados" Style="{StaticResource QuietActionButton}" IsEnabled="False" Click="BlockedDomainAddRequested" IsEnabledChanged="DomainAddButton_IsEnabledChanged"/>
+                                            <TextBox x:Name="txtBlockedDomain" Tag="{Binding [Main.Ui.Lists.BlockedPlaceholder], Source={x:Static local:LocalizationManager.Instance}}" Height="36" IsEnabled="{Binding IsEnabled, ElementName=txtListDomain}" ToolTip="{Binding [Main.Ui.Lists.BlockedTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.BlockedAccessible], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.HelpText="{Binding [Main.Ui.Lists.BlockedHelp], Source={x:Static local:LocalizationManager.Instance}}" TextChanged="BlockedDomainInput_TextChanged"/>
+                                            <Button x:Name="btnAddBlockedDomain" Grid.Column="2" Content="{Binding [Main.Ui.Lists.Add], Source={x:Static local:LocalizationManager.Instance}}" Width="82" Height="32" Margin="0" ToolTip="{Binding [Main.Ui.Lists.BlockedAddTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.BlockedAddAccessible], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" IsEnabled="False" Click="BlockedDomainAddRequested" IsEnabledChanged="DomainAddButton_IsEnabledChanged"/>
                                         </Grid>
                                         <Grid Grid.Row="2">
                                             <ListBox x:Name="lstBlockedDomains" Style="{StaticResource DomainListPreviewBox}" MinHeight="70" MaxHeight="112">
@@ -1271,39 +1273,39 @@
                                                             </StackPanel>
                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0" VerticalAlignment="Center">
                                                                 <Button Style="{StaticResource DomainSwitchButton}" Margin="8,0,0,0" Click="BlockedDomainSwitch_Click"/>
-                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="Eliminar este dominio" AutomationProperties.Name="Eliminar dominio" Click="BlockedDomainRemove_Click"/>
+                                                                <Button Content="×" FontSize="18" Width="28" Height="28" Padding="0" Margin="3,0,0,0" Foreground="{DynamicResource NextRed}" Style="{StaticResource ApiIconButton}" ToolTip="{Binding [Main.Ui.Lists.RemoveDomainTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Lists.RemoveDomainAccessible], Source={x:Static local:LocalizationManager.Instance}}" Click="BlockedDomainRemove_Click"/>
                                                             </StackPanel>
                                                         </Grid>
                                                     </DataTemplate>
                                                 </ListBox.ItemTemplate>
                                             </ListBox>
                                             <StackPanel x:Name="pnlBlockedEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
-                                                <TextBlock Text="Los dominios bloqueados aparecerán aquí." FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Lists.BlockedEmpty], Source={x:Static local:LocalizationManager.Instance}}" FontSize="11" Foreground="{DynamicResource TextSecondary}"/>
                                             </StackPanel>
                                         </Grid>
                                     </Grid>
                                 </Border>
                             </StackPanel>
                             <TextBox x:Name="txtListDomain" Visibility="Collapsed" IsEnabled="False" TextChanged="LegacyListDomain_TextChanged" IsEnabledChanged="LegacyListDomain_IsEnabledChanged"/>
-                            <Expander x:Name="expListImport" Header="Previsualizar e importar dominios" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,8,0,10">
+                            <Expander x:Name="expListImport" Header="{Binding [Main.Ui.Lists.ImportTitle], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,8,0,10">
                                 <Border Background="{DynamicResource CardColor}" CornerRadius="10" Padding="10" Margin="0,6,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="TXT: un dominio o URL por línea (activo). JSON exportado: conserva el estado. Las entradas existentes se omiten para mantener su estado; no se reemplaza la lista." FontSize="10" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="{Binding [Main.Ui.Lists.ImportDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="10" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                                         <TextBox x:Name="txtBulkDomainImport" AcceptsReturn="True" TextWrapping="NoWrap" VerticalScrollBarVisibility="Auto" Height="84" Tag="pejemplo.com&#x0a;*.subdominio.com"/>
                                         <Grid Margin="0,6,0,6">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <ComboBox x:Name="cmbImportListTarget" Grid.Column="0" Height="30"/>
-                                            <Button x:Name="btnOpenImportFile" Grid.Column="2" Content="Elegir archivo" Width="96" Height="28" ToolTip="Cargar un archivo para revisar y previsualizar antes de importar." Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
-                                            <Button x:Name="btnPreviewDomainImport" Grid.Column="4" Content="Previsualizar" Style="{StaticResource QuietActionButton}"/>
+                                            <Button x:Name="btnOpenImportFile" Grid.Column="2" Content="{Binding [Main.Ui.Lists.ChooseFile], Source={x:Static local:LocalizationManager.Instance}}" Width="96" Height="28" ToolTip="{Binding [Main.Ui.Lists.ChooseFileTooltip], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
+                                            <Button x:Name="btnPreviewDomainImport" Grid.Column="4" Content="{Binding [Main.Ui.Lists.Preview], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}"/>
                                         </Grid>
-                                        <TextBlock x:Name="lblImportPreviewSummary" Text="Sin previsualización" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6"/>
+                                        <TextBlock x:Name="lblImportPreviewSummary" Text="{Binding [Main.Ui.Lists.NoPreview], Source={x:Static local:LocalizationManager.Instance}}" FontSize="10" Foreground="{DynamicResource TextSecondary}" Margin="0,0,0,6"/>
                                         <ListBox x:Name="lstImportPreview" DisplayMemberPath="Id" Style="{StaticResource ListPreviewBox}" MaxHeight="96"/>
                                         <ListBox x:Name="lstImportIssues" Style="{StaticResource ListPreviewBox}" MaxHeight="84" Margin="0,6,0,0"/>
                                         <TextBlock x:Name="lblImportIssues" FontSize="10" Foreground="{DynamicResource StatusAttention}" TextWrapping="Wrap" Margin="0,6,0,0"/>
                                         <Grid Margin="0,8,0,0">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <TextBlock x:Name="lblBulkImportResult" FontSize="10" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" VerticalAlignment="Center"/>
-                                            <Button x:Name="btnImportDomainList" Grid.Column="2" Content="Importar dominios" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
+                                            <Button x:Name="btnImportDomainList" Grid.Column="2" Content="{Binding [Main.Ui.Lists.ImportDomains], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" IsEnabled="False"/>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -1320,7 +1322,7 @@
                                 <Border Width="2.5" Height="9" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,1" CornerRadius="1"/>
                                 <Border Width="2.5" Height="14" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,1,1" CornerRadius="1"/>
                             </Grid>
-                            <TextBlock Text="Actividad" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Tab.Activity], Source={x:Static local:LocalizationManager.Instance}}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
                     <ScrollViewer x:Name="activityScrollViewer" Background="Transparent" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -1337,58 +1339,58 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 <Grid Grid.Column="0">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Perfil:" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding [Main.Ui.Common.Profile], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                     <ComboBox x:Name="cmbActivityProfile" Grid.Column="2" ItemsSource="{Binding ItemsSource, ElementName=cmbApiProfile}" SelectedItem="{Binding SelectedItem, ElementName=cmbApiProfile, Mode=TwoWay}" DisplayMemberPath="Name" IsEnabled="{Binding IsEnabled, ElementName=cmbApiProfile}" Height="36"/>
                                 </Grid>
                                 <Grid Grid.Column="2">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Dispositivo:" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
-                                    <ComboBox x:Name="cmbActivityDevice" Grid.Column="2" Height="36" IsEnabled="False" ToolTip="Filtrar por dispositivo"/>
+                                    <TextBlock Text="{Binding [Main.Ui.Common.Device], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="cmbActivityDevice" Grid.Column="2" Height="36" IsEnabled="False" ToolTip="{Binding [Main.Ui.Activity.FilterDevice], Source={x:Static local:LocalizationManager.Instance}}"/>
                                 </Grid>
                             </Grid>
                         </Grid>
                         <StackPanel Grid.Row="1" Margin="0,0,0,8">
                             <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                <Button x:Name="btnToggleActivityStream" Content="En vivo" Style="{StaticResource LiveStreamButton}" FocusVisualStyle="{x:Null}" IsEnabled="False" ToolTip="Ver consultas nuevas mientras Actividad esté abierta"/>
-                                <Button x:Name="btnBlockedOnly" Grid.Column="1" Content="Solo bloqueados" Margin="8,0,0,0" Style="{StaticResource QuietActionButton}" FocusVisualStyle="{x:Null}" Click="BlockedOnly_Click" ToolTip="Mostrar solo consultas bloqueadas"/>
-                                <TextBlock Grid.Column="3" Text="Últimas consultas" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
+                                <Button x:Name="btnToggleActivityStream" Content="{Binding [Main.Ui.Activity.Live], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource LiveStreamButton}" FocusVisualStyle="{x:Null}" IsEnabled="False" ToolTip="{Binding [Main.Ui.Activity.LiveTooltip], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                <Button x:Name="btnBlockedOnly" Grid.Column="1" Content="{Binding [Main.Ui.Activity.BlockedOnly], Source={x:Static local:LocalizationManager.Instance}}" Margin="8,0,0,0" Style="{StaticResource QuietActionButton}" FocusVisualStyle="{x:Null}" Click="BlockedOnly_Click" ToolTip="{Binding [Main.Ui.Activity.BlockedOnlyTooltip], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding [Main.Ui.Activity.LatestQueries], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center"/>
                             </Grid>
-                            <Expander Header="Filtros adicionales" Foreground="{DynamicResource TextSecondary}" FontSize="12">
+                            <Expander Header="{Binding [Main.Ui.Activity.AdditionalFilters], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" FontSize="12">
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="8" Margin="0,4,0,8">
                                     <StackPanel>
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <TextBox x:Name="txtActivitySearch" Tag="Buscar dominio"/>
-                                            <ComboBox x:Name="cmbActivityStatus" Grid.Column="2" Width="150" Height="34" IsEnabled="False" ToolTip="Filtrar por resultado"/>
-                                            <Button x:Name="btnRefreshActivity" Grid.Column="4" Content="Aplicar filtros" Style="{StaticResource QuietActionButton}" IsEnabled="False" IsEnabledChanged="ActivityRefreshButton_IsEnabledChanged"/>
+                                            <TextBox x:Name="txtActivitySearch" Tag="{Binding [Main.Ui.Activity.SearchDomain], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                            <ComboBox x:Name="cmbActivityStatus" Grid.Column="2" Width="150" Height="34" IsEnabled="False" ToolTip="{Binding [Main.Ui.Activity.FilterResult], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                            <Button x:Name="btnRefreshActivity" Grid.Column="4" Content="{Binding [Main.Ui.Activity.ApplyFilters], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource QuietActionButton}" IsEnabled="False" IsEnabledChanged="ActivityRefreshButton_IsEnabledChanged"/>
                                         </Grid>
                                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                            <TextBlock Text="Período:" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
-                                            <Button Content="Todo" Tag="0" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
-                                            <Button Content="24 horas" Tag="1" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
-                                            <Button Content="7 días" Tag="7" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}"/>
+                                            <TextBlock Text="{Binding [Main.Ui.Activity.Period], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                            <Button Content="{Binding [Main.Ui.Activity.AllTime], Source={x:Static local:LocalizationManager.Instance}}" Tag="0" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
+                                            <Button Content="{Binding [Main.Ui.Activity.Last24Hours], Source={x:Static local:LocalizationManager.Instance}}" Tag="1" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}" Margin="0,0,6,0"/>
+                                            <Button Content="{Binding [Main.Ui.Activity.Last7Days], Source={x:Static local:LocalizationManager.Instance}}" Tag="7" Click="ActivityPeriod_Click" Style="{StaticResource QuietActionButton}"/>
                                         </StackPanel>
-                                        <Expander Header="Rango personalizado" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,0">
+                                        <Expander Header="{Binding [Main.Ui.Activity.CustomRange], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" Margin="0,8,0,0">
                                         <WrapPanel Margin="0,8,0,0" Loaded="ActivityDateControls_Loaded">
                                             <StackPanel Width="320" Margin="0,0,12,8">
-                                                <TextBlock Text="Desde · hora local" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="1,0,0,5"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Activity.FromLocalTime], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="1,0,0,5"/>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="58"/><ColumnDefinition Width="5"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                                                    <DatePicker x:Name="dpActivityFrom" Grid.Column="0" Height="34" FontSize="13" Padding="8,0" Background="{DynamicResource InputColor}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CalendarStyle="{StaticResource ActivityCalendarStyle}" SelectedDateFormat="Short" Language="es-AR" IsEnabled="{Binding IsEnabled, ElementName=txtActivityFrom}" SelectedDateChanged="ActivityDateTime_Changed" DateValidationError="ActivityDateValidationError" ToolTip="Selecciona la fecha local desde la que consultar" AutomationProperties.Name="Fecha inicial, hora local"/>
-                                                    <ComboBox x:Name="cmbActivityFromHour" Grid.Column="2" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="Hora local, formato de 24 horas" AutomationProperties.Name="Hora inicial, de 00 a 23" SelectionChanged="ActivityDateTime_Changed"/>
+                                                    <DatePicker x:Name="dpActivityFrom" Grid.Column="0" Height="34" FontSize="13" Padding="8,0" Background="{DynamicResource InputColor}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CalendarStyle="{StaticResource ActivityCalendarStyle}" SelectedDateFormat="Short" IsEnabled="{Binding IsEnabled, ElementName=txtActivityFrom}" SelectedDateChanged="ActivityDateTime_Changed" DateValidationError="ActivityDateValidationError" ToolTip="{Binding [Main.Ui.Activity.FromDateTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.FromDateAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                                    <ComboBox x:Name="cmbActivityFromHour" Grid.Column="2" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="{Binding [Main.Ui.Activity.LocalHourTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.FromHourAccessible], Source={x:Static local:LocalizationManager.Instance}}" SelectionChanged="ActivityDateTime_Changed"/>
                                                     <TextBlock Grid.Column="3" Text=":" FontSize="14" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <ComboBox x:Name="cmbActivityFromMinute" Grid.Column="4" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="Minuto local" AutomationProperties.Name="Minuto inicial, de 00 a 59" SelectionChanged="ActivityDateTime_Changed"/>
+                                                    <ComboBox x:Name="cmbActivityFromMinute" Grid.Column="4" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="{Binding [Main.Ui.Activity.LocalMinuteTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.FromMinuteAccessible], Source={x:Static local:LocalizationManager.Instance}}" SelectionChanged="ActivityDateTime_Changed"/>
                                                 </Grid>
                                             </StackPanel>
                                             <StackPanel Width="320" Margin="0,0,0,8">
-                                                <TextBlock Text="Hasta · hora local · exclusiva" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="1,0,0,5"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Activity.ToLocalExclusive], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="1,0,0,5"/>
                                                 <Grid>
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="58"/><ColumnDefinition Width="5"/><ColumnDefinition Width="58"/></Grid.ColumnDefinitions>
-                                                    <DatePicker x:Name="dpActivityTo" Grid.Column="0" Height="34" FontSize="13" Padding="8,0" Background="{DynamicResource InputColor}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CalendarStyle="{StaticResource ActivityCalendarStyle}" SelectedDateFormat="Short" Language="es-AR" IsEnabled="{Binding IsEnabled, ElementName=txtActivityTo}" SelectedDateChanged="ActivityDateTime_Changed" DateValidationError="ActivityDateValidationError" ToolTip="Selecciona la fecha local final; el límite no se incluye" AutomationProperties.Name="Fecha final exclusiva, hora local"/>
-                                                    <ComboBox x:Name="cmbActivityToHour" Grid.Column="2" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="Hora local, formato de 24 horas" AutomationProperties.Name="Hora final, de 00 a 23" SelectionChanged="ActivityDateTime_Changed"/>
+                                                    <DatePicker x:Name="dpActivityTo" Grid.Column="0" Height="34" FontSize="13" Padding="8,0" Background="{DynamicResource InputColor}" Foreground="{DynamicResource TextPrimary}" BorderBrush="{DynamicResource BorderColor}" BorderThickness="1" CalendarStyle="{StaticResource ActivityCalendarStyle}" SelectedDateFormat="Short" IsEnabled="{Binding IsEnabled, ElementName=txtActivityTo}" SelectedDateChanged="ActivityDateTime_Changed" DateValidationError="ActivityDateValidationError" ToolTip="{Binding [Main.Ui.Activity.ToDateTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.ToDateAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                                    <ComboBox x:Name="cmbActivityToHour" Grid.Column="2" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="{Binding [Main.Ui.Activity.LocalHourTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.ToHourAccessible], Source={x:Static local:LocalizationManager.Instance}}" SelectionChanged="ActivityDateTime_Changed"/>
                                                     <TextBlock Grid.Column="3" Text=":" FontSize="14" Foreground="{DynamicResource TextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    <ComboBox x:Name="cmbActivityToMinute" Grid.Column="4" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="Minuto local" AutomationProperties.Name="Minuto final, de 00 a 59" SelectionChanged="ActivityDateTime_Changed"/>
+                                                    <ComboBox x:Name="cmbActivityToMinute" Grid.Column="4" Height="34" IsEnabled="False" SelectedIndex="0" ToolTip="{Binding [Main.Ui.Activity.LocalMinuteTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Activity.ToMinuteAccessible], Source={x:Static local:LocalizationManager.Instance}}" SelectionChanged="ActivityDateTime_Changed"/>
                                                 </Grid>
                                             </StackPanel>
                                         </WrapPanel>
@@ -1396,7 +1398,7 @@
                                         <TextBlock x:Name="lblActivityDateValidation" Foreground="{DynamicResource StatusAttention}" FontSize="12" TextWrapping="Wrap" Margin="1,0,0,0"/>
                                         <TextBox x:Name="txtActivityFrom" Visibility="Collapsed" IsEnabledChanged="ActivityDateEnabledChanged" TextChanged="LegacyActivityDate_TextChanged"/>
                                         <TextBox x:Name="txtActivityTo" Visibility="Collapsed" IsEnabledChanged="ActivityDateEnabledChanged" TextChanged="LegacyActivityDate_TextChanged"/>
-                                        <Button x:Name="btnLoadMoreActivity" Content="Cargar más consultas" HorizontalAlignment="Right" Style="{StaticResource QuietActionButton}" IsEnabled="False" Margin="0,8,0,0"/>
+                                        <Button x:Name="btnLoadMoreActivity" Content="{Binding [Main.Ui.Activity.LoadMore], Source={x:Static local:LocalizationManager.Instance}}" HorizontalAlignment="Right" Style="{StaticResource QuietActionButton}" IsEnabled="False" Margin="0,8,0,0"/>
                                     </StackPanel>
                                 </Border>
                             </Expander>
@@ -1407,9 +1409,9 @@
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="8,6">
                                     <Grid>
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="104"/><ColumnDefinition Width="*"/><ColumnDefinition Width="136"/></Grid.ColumnDefinitions>
-                                        <TextBlock Text="Dominio" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
+                                        <TextBlock Text="{Binding [Main.Ui.Activity.Domain], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
 
-                                        <TextBlock Grid.Column="2" Text="Dispositivo y hora" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
+                                        <TextBlock Grid.Column="2" Text="{Binding [Main.Ui.Activity.DeviceAndTime], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondary}"/>
                                     </Grid>
                                 </Border>
                                 <Grid Grid.Row="1">
@@ -1421,7 +1423,18 @@
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                                         <TextBlock Text="{Binding Domain}" FontSize="13" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                                         <StackPanel Grid.Column="1" HorizontalAlignment="Right" Margin="12,0,0,0">
-                                                            <TextBlock Text="{Binding Device.Name, TargetNullValue=Dispositivo no identificado}" Foreground="{DynamicResource TextPrimary}" FontSize="12" HorizontalAlignment="Right"/>
+                                                            <TextBlock Foreground="{DynamicResource TextPrimary}" FontSize="12" HorizontalAlignment="Right">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Text" Value="{Binding Device.Name}"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Device.Name}" Value="{x:Null}">
+                                                                                <Setter Property="Text" Value="{Binding [Main.Ui.Common.UnknownDevice], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
                                                             <TextBlock Text="{Binding TimestampLocal, StringFormat={}{0:dd/MM HH:mm:ss}}" Foreground="{DynamicResource TextSecondary}" FontSize="11" HorizontalAlignment="Right"/>
                                                         </StackPanel>
                                                     </Grid>
@@ -1431,8 +1444,8 @@
                                         </ListBox.ItemTemplate>
                                     </ListBox>
                                     <StackPanel x:Name="pnlActivityEmpty" HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="280">
-                                                    <TextBlock Text="Sin actividad para mostrar" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center"/>
-                                                    <TextBlock x:Name="lblActivityEmptyDescription" Text="Las consultas DNS del perfil aparecerán aquí." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                                    <TextBlock Text="{Binding [Main.Ui.Activity.EmptyTitle], Source={x:Static local:LocalizationManager.Instance}}" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" HorizontalAlignment="Center"/>
+                                                    <TextBlock x:Name="lblActivityEmptyDescription" Text="{Binding [Main.Ui.Activity.EmptyDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Grid>
                             </Grid>
@@ -1449,42 +1462,54 @@
                     <TabItem.Header>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="&#xE713;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="{Binding Foreground, RelativeSource={RelativeSource AncestorType=TabItem}}" VerticalAlignment="Center"/>
-                            <TextBlock Text="Ajustes" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding [Main.Ui.Tab.Settings], Source={x:Static local:LocalizationManager.Instance}}" Margin="8,0,0,0" VerticalAlignment="Center"/>
                         </StackPanel>
                     </TabItem.Header>
                     <ScrollViewer x:Name="settingsScrollViewer" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                         <StackPanel>
                             <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8" Margin="0,0,0,10">
                                 <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding [Main.Ui.Language.Label], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <ComboBox x:Name="cmbLanguage" Grid.Column="1" Width="200" Height="34" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="13"
+                                              ItemsSource="{Binding LanguageOptions, Source={x:Static local:LocalizationManager.Instance}}"
+                                              DisplayMemberPath="DisplayName" SelectedValuePath="Code"
+                                              SelectedValue="{Binding SelectedLanguage, Source={x:Static local:LocalizationManager.Instance}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                              ToolTip="{Binding [Main.Ui.Language.Tooltip], Source={x:Static local:LocalizationManager.Instance}}"
+                                              AutomationProperties.Name="{Binding [Main.Ui.Language.Accessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                </Grid>
+                            </Border>
+                            <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8" Margin="0,0,0,10">
+                                <Grid>
                                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="7"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="10"/><ColumnDefinition Width="*"/><ColumnDefinition Width="10"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="Clave API:" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding [Main.Ui.Settings.ApiKey], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                                     <Grid Grid.Column="2" Height="36">
-                                        <PasswordBox x:Name="pwdApiKey" ToolTip="Clave API de NextDNS" Style="{StaticResource RoundedPasswordBox}" Padding="10,7,38,7" Height="34" VerticalAlignment="Center"/>
-                                        <TextBox x:Name="txtApiKeyVisible" ToolTip="Clave API visible" Style="{StaticResource RoundedApiKeyTextBox}" Height="34" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.Name="Clave API visible"/>
-                                        <Button x:Name="btnToggleApiKeyVisibility" Width="27" Height="27" Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="Mostrar clave API" AutomationProperties.Name="Mostrar clave API" Style="{StaticResource ApiIconButton}" IsEnabled="False">
+                                        <PasswordBox x:Name="pwdApiKey" ToolTip="{Binding [Main.Ui.Settings.ApiKeyTooltip], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource RoundedPasswordBox}" Padding="10,7,38,7" Height="34" VerticalAlignment="Center"/>
+                                        <TextBox x:Name="txtApiKeyVisible" ToolTip="{Binding [Main.Ui.Settings.VisibleApiKeyTooltip], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource RoundedApiKeyTextBox}" Height="34" VerticalAlignment="Center" Visibility="Collapsed" AutomationProperties.Name="{Binding [Main.Ui.Settings.VisibleApiKeyAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                        <Button x:Name="btnToggleApiKeyVisibility" Width="27" Height="27" Padding="0" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,4,0" ToolTip="{Binding [Main.Ui.Settings.ShowApiKey], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.ShowApiKey], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False">
                                             <TextBlock x:Name="ApiKeyVisibilityGlyph" Text="&#xE890;" FontFamily="Segoe MDL2 Assets" FontSize="14"/>
                                         </Button>
                                     </Grid>
                                     <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button x:Name="btnVerifyApiKey" Width="30" Height="30" Padding="0" ToolTip="Verificar clave" AutomationProperties.Name="Verificar clave" Style="{StaticResource ApiIconButton}" IsEnabled="False">
+                                        <Button x:Name="btnVerifyApiKey" Width="30" Height="30" Padding="0" ToolTip="{Binding [Main.Ui.Settings.VerifyKey], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.VerifyKey], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False">
                                             <TextBlock Text="&#xE73E;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
                                         </Button>
-                                        <Button x:Name="btnSaveApiKey" Width="30" Height="30" Padding="0" Margin="4,0,0,0" ToolTip="Guardar clave" AutomationProperties.Name="Guardar clave" Style="{StaticResource ApiIconButton}" IsEnabled="False">
+                                        <Button x:Name="btnSaveApiKey" Width="30" Height="30" Padding="0" Margin="4,0,0,0" ToolTip="{Binding [Main.Ui.Settings.SaveKey], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.SaveKey], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False">
                                             <TextBlock Text="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
                                         </Button>
-                                        <Button x:Name="btnDeleteApiKey" Width="30" Height="30" Padding="0" Margin="4,0,0,0" ToolTip="Borrar clave guardada" AutomationProperties.Name="Borrar clave guardada" Style="{StaticResource ApiIconButton}" IsEnabled="False">
+                                        <Button x:Name="btnDeleteApiKey" Width="30" Height="30" Padding="0" Margin="4,0,0,0" ToolTip="{Binding [Main.Ui.Settings.DeleteKey], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.DeleteKey], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False">
                                             <TextBlock Text="&#xE74D;" FontFamily="Segoe MDL2 Assets" FontSize="15"/>
                                         </Button>
                                     </StackPanel>
-                                    <TextBlock x:Name="lblApiConnectionStatus" Grid.Row="2" Grid.ColumnSpan="5" Text="API no conectada" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="2,7,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="lblApiConnectionStatus" Grid.Row="2" Grid.ColumnSpan="5" Text="{Binding [Main.Ui.Settings.ApiDisconnected], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" Margin="2,7,0,0" TextWrapping="Wrap"/>
                                 </Grid>
                             </Border>
 
-                            <Expander x:Name="expLocalProfiles" Header="Perfiles locales" Foreground="{DynamicResource TextSecondary}" FontSize="12" IsExpanded="True" Margin="0,0,0,8">
+                            <Expander x:Name="expLocalProfiles" Header="{Binding [Main.Ui.Settings.LocalProfiles], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" FontSize="12" IsExpanded="True" Margin="0,0,0,8">
                                 <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10" Margin="0,8,0,0">
                                     <StackPanel>
-                                        <TextBlock Text="Los perfiles se guardan localmente y se usan desde Inicio. Agregar uno no cambia el perfil activo." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock Text="{Binding [Main.Ui.Settings.LocalProfilesDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                                         <ListBox x:Name="lstSavedProfiles" ItemsSource="{Binding ItemsSource, ElementName=cmbProfiles}" SelectedItem="{Binding SelectedItem, ElementName=cmbProfiles, Mode=TwoWay}" Style="{StaticResource ListPreviewBox}" MaxHeight="112">
                                             <ListBox.ItemTemplate>
                                                 <DataTemplate>
@@ -1497,14 +1522,14 @@
                                         </ListBox>
                                         <Grid Margin="0,8,0,8">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="100"/></Grid.ColumnDefinitions>
-                                            <TextBox x:Name="txtName" Grid.Column="0" Tag="Nombre del perfil" MaxLength="80" ToolTip="Escribe un nombre obligatorio para identificar el perfil." AutomationProperties.Name="Nombre del perfil"/>
-                                            <TextBox x:Name="txtID" Grid.Column="2" Tag="ID (6 hex)" MaxLength="6" ToolTip="ID NextDNS de exactamente 6 caracteres hexadecimales." AutomationProperties.Name="ID NextDNS, seis caracteres hexadecimales"/>
+                                            <TextBox x:Name="txtName" Grid.Column="0" Tag="{Binding [Main.Ui.Settings.ProfileNamePlaceholder], Source={x:Static local:LocalizationManager.Instance}}" MaxLength="80" ToolTip="{Binding [Main.Ui.Settings.ProfileNameTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.ProfileNameAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                            <TextBox x:Name="txtID" Grid.Column="2" Tag="{Binding [Main.Ui.Settings.ProfileIdPlaceholder], Source={x:Static local:LocalizationManager.Instance}}" MaxLength="6" ToolTip="{Binding [Main.Ui.Settings.ProfileIdTooltip], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.ProfileIdAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
                                         </Grid>
-                                        <TextBlock x:Name="lblProfileMessage" Text="ID de seis caracteres hexadecimales." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                                        <TextBlock x:Name="lblProfileMessage" Text="{Binding [Main.Ui.Settings.ProfileIdHelp], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,0,0,8"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="8"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                            <Button x:Name="btnAddLocalProfile" Grid.Column="0" Content="Agregar perfil" Height="32" Click="BtnAdd_Click" Style="{StaticResource QuietActionButton}" HorizontalAlignment="Stretch" AutomationProperties.Name="Agregar perfil local"/>
-                                            <Button x:Name="btnDeleteLocalProfile" Grid.Column="2" Content="Eliminar seleccionado" Height="32" Click="BtnDel_Click" Style="{StaticResource OutlineDestructiveButton}"/>
+                                            <Button x:Name="btnAddLocalProfile" Grid.Column="0" Content="{Binding [Main.Ui.Settings.AddProfile], Source={x:Static local:LocalizationManager.Instance}}" Height="32" Click="BtnAdd_Click" Style="{StaticResource QuietActionButton}" HorizontalAlignment="Stretch" AutomationProperties.Name="{Binding [Main.Ui.Settings.AddProfileAccessible], Source={x:Static local:LocalizationManager.Instance}}"/>
+                                            <Button x:Name="btnDeleteLocalProfile" Grid.Column="2" Content="{Binding [Main.Ui.Settings.DeleteSelected], Source={x:Static local:LocalizationManager.Instance}}" Height="32" Click="BtnDel_Click" Style="{StaticResource OutlineDestructiveButton}"/>
                                         </Grid>
                                     </StackPanel>
                                 </Border>
@@ -1514,32 +1539,32 @@
                                     <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8">
                                         <CheckBox x:Name="chkReportName" Style="{StaticResource SettingsToggle}" IsChecked="True" Height="50">
                                             <StackPanel>
-                                                <TextBlock Text="Reportar nombre de dispositivo" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                                                <TextBlock Text="Incluye el nombre del dispositivo al activar la protección." FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Settings.ReportDeviceName], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Settings.ReportDeviceNameDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </CheckBox>
                                     </Border>
                                     <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8">
-                                        <CheckBox x:Name="chkSetupRouter" ToolTip="Activa NextDNS para solicitudes de otros dispositivos de la red." Style="{StaticResource SettingsToggle}" IsChecked="False" Height="50">
+                                        <CheckBox x:Name="chkSetupRouter" ToolTip="{Binding [Main.Ui.Settings.RouterModeTooltip], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource SettingsToggle}" IsChecked="False" Height="50">
                                             <StackPanel>
-                                                <TextBlock Text="Permitir modo router" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
-                                                <TextBlock Text="Extiende NextDNS a solicitudes de otros equipos de la red." FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Settings.RouterMode], Source={x:Static local:LocalizationManager.Instance}}" FontSize="13" Foreground="{DynamicResource TextPrimary}"/>
+                                                <TextBlock Text="{Binding [Main.Ui.Settings.RouterModeDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="11" Foreground="{DynamicResource TextSecondary}" Margin="0,3,0,0"/>
                                             </StackPanel>
                                         </CheckBox>
                                     </Border>
-                                <Expander x:Name="expApiProfileSettings" Expanded="ApiProfileSettings_Expanded" Header="Ajustes del perfil NextDNS" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,8" IsExpanded="False">
+                                <Expander x:Name="expApiProfileSettings" Expanded="ApiProfileSettings_Expanded" Header="{Binding [Main.Ui.Settings.ApiProfile], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}" FontSize="12" Margin="0,0,0,8" IsExpanded="False">
                                     <Border Background="Transparent" BorderBrush="{DynamicResource BorderColor}" BorderThickness="0,0,0,1" Padding="10,8">
                                         <StackPanel x:Name="pnlApiProfileSettings">
-                                            <TextBlock Text="Elige un perfil para consultar y cambiar estas opciones." FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
-                                            <ComboBox x:Name="cmbApiProfile" DisplayMemberPath="Name" SelectedValuePath="Id" Height="34" Margin="0,8,0,7" IsEnabled="False" ToolTip="Perfil remoto para operaciones de la API" SelectionChanged="ApiProfileDomainInputChanged"/>
-                                            <Button x:Name="btnLoadApiSettings" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="Leer ajustes actuales" AutomationProperties.Name="Leer ajustes actuales" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
+                                            <TextBlock Text="{Binding [Main.Ui.Settings.ApiProfileDescription], Source={x:Static local:LocalizationManager.Instance}}" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap"/>
+                                            <ComboBox x:Name="cmbApiProfile" DisplayMemberPath="Name" SelectedValuePath="Id" Height="34" Margin="0,8,0,7" IsEnabled="False" ToolTip="{Binding [Main.Ui.Settings.RemoteProfileTooltip], Source={x:Static local:LocalizationManager.Instance}}" SelectionChanged="ApiProfileDomainInputChanged"/>
+                                            <Button x:Name="btnLoadApiSettings" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="{Binding [Main.Ui.Settings.ReadCurrentSettings], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.ReadCurrentSettings], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
                                             <StackPanel x:Name="pnlApiSettingsValues" Visibility="Collapsed">
-                                            <CheckBox x:Name="chkApiLogsEnabled" Content="Guardar registros DNS" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,8,0,0"/>
-                                            <CheckBox x:Name="chkApiDropIp" Content="No guardar IP del cliente" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
-                                            <CheckBox x:Name="chkApiDropDomain" Content="No guardar dominios consultados" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
-                                            <CheckBox x:Name="chkApiBlockPageEnabled" Content="Mostrar página de bloqueo" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,0,0,8"/>
+                                            <CheckBox x:Name="chkApiLogsEnabled" Content="{Binding [Main.Ui.Settings.SaveDnsLogs], Source={x:Static local:LocalizationManager.Instance}}" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,8,0,0"/>
+                                            <CheckBox x:Name="chkApiDropIp" Content="{Binding [Main.Ui.Settings.DropClientIp], Source={x:Static local:LocalizationManager.Instance}}" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
+                                            <CheckBox x:Name="chkApiDropDomain" Content="{Binding [Main.Ui.Settings.DropQueriedDomains], Source={x:Static local:LocalizationManager.Instance}}" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34"/>
+                                            <CheckBox x:Name="chkApiBlockPageEnabled" Content="{Binding [Main.Ui.Settings.BlockPage], Source={x:Static local:LocalizationManager.Instance}}" IsThreeState="True" IsChecked="{x:Null}" IsEnabled="False" Style="{StaticResource SettingsToggle}" Height="34" Margin="0,0,0,8"/>
                                             </StackPanel>
-                                            <Button x:Name="btnApplyApiSettings" Content="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="Guardar ajustes del perfil" AutomationProperties.Name="Guardar ajustes del perfil" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
+                                            <Button x:Name="btnApplyApiSettings" Content="&#xE74E;" FontFamily="Segoe MDL2 Assets" FontSize="14" Width="30" Height="30" HorizontalAlignment="Left" ToolTip="{Binding [Main.Ui.Settings.SaveProfileSettings], Source={x:Static local:LocalizationManager.Instance}}" AutomationProperties.Name="{Binding [Main.Ui.Settings.SaveProfileSettings], Source={x:Static local:LocalizationManager.Instance}}" Style="{StaticResource ApiIconButton}" IsEnabled="False"/>
                                             <TextBlock x:Name="lblApiSettingsStatus" FontSize="12" Foreground="{DynamicResource TextSecondary}" TextWrapping="Wrap" Margin="0,7,0,0"/>
                                         </StackPanel>
                                     </Border>
@@ -1548,10 +1573,10 @@
 
                             <Button x:Name="btnDiagnostics" Height="30" HorizontalAlignment="Stretch" Padding="0"
                                     Background="Transparent" Foreground="{DynamicResource NextBlue}" BorderThickness="0"
-                                    FontSize="12" Cursor="Hand" Style="{StaticResource DiagnosticLinkButton}" Click="BtnDiagnostics_Click" AutomationProperties.Name="Abrir registros de diagnóstico">
+                                    FontSize="12" Cursor="Hand" Style="{StaticResource DiagnosticLinkButton}" Click="BtnDiagnostics_Click" AutomationProperties.Name="{Binding [Main.Ui.Diagnostics.Accessible], Source={x:Static local:LocalizationManager.Instance}}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                    <TextBlock Text="Diagnóstico:" Foreground="{DynamicResource TextSecondary}"/>
-                                    <TextBlock Text="  Abrir registros" Foreground="{DynamicResource NextBlue}" TextDecorations="Underline"/>
+                                    <TextBlock Text="{Binding [Main.Ui.Diagnostics.Label], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource TextSecondary}"/>
+                                    <TextBlock Text="{Binding [Main.Ui.Diagnostics.OpenLogs], Source={x:Static local:LocalizationManager.Instance}}" Foreground="{DynamicResource NextBlue}" TextDecorations="Underline"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>

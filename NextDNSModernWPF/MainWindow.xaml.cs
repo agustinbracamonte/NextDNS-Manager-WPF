@@ -62,6 +62,8 @@ namespace NextDNSModernWPF
         private System.Windows.Forms.ToolStripMenuItem _trayDisableMenuItem;
         private System.Windows.Forms.ToolStripMenuItem _trayRefreshStatusMenuItem;
         private System.Windows.Forms.ToolStripMenuItem _trayCheckUpdatesMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayOpenMenuItem;
+        private System.Windows.Forms.ToolStripMenuItem _trayExitMenuItem;
         private System.Drawing.Icon _trayIcon;
         private bool _allowClose;
         private bool _trayDisposed;
@@ -73,6 +75,7 @@ namespace NextDNSModernWPF
         internal MainWindow(bool demoCaptureMode, ThemeVariant demoTheme)
         {
             _demoCaptureMode = demoCaptureMode;
+            LocalizationManager.Initialize();
             if (!demoCaptureMode)
                 ThemeManager.Initialize(System.Windows.Application.Current);
 
@@ -87,6 +90,7 @@ namespace NextDNSModernWPF
             InitializeNetworkInformation();
             cmbTheme.SelectionChanged += CmbTheme_SelectionChanged;
             ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
+            LocalizationManager.LanguageChanged += LocalizationManager_LanguageChanged;
             SyncThemeSelection();
             lblInfo.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             PreviewKeyDown += MainWindow_PreviewKeyDown;
@@ -194,13 +198,13 @@ namespace NextDNSModernWPF
                 notifyIcon.BalloonTipClicked += NotifyIcon_BalloonTipClicked;
 
                 _trayStatusMenuItem = new System.Windows.Forms.ToolStripMenuItem { Enabled = false };
-                _trayEnableMenuItem = new System.Windows.Forms.ToolStripMenuItem("Activar NextDNS", null,
+                _trayEnableMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.EnableNextDns"), null,
                     async (s, e) => await PerformActionAsync("activate"));
-                _trayDisableMenuItem = new System.Windows.Forms.ToolStripMenuItem("Desactivar NextDNS", null,
+                _trayDisableMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.DeactivateNextDns"), null,
                     async (s, e) => await PerformActionAsync("deactivate"));
-                _trayRefreshStatusMenuItem = new System.Windows.Forms.ToolStripMenuItem("Actualizar estado", null,
+                _trayRefreshStatusMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.RefreshStatus"), null,
                     async (s, e) => await CheckCurrentStatusAsync());
-                _trayCheckUpdatesMenuItem = new System.Windows.Forms.ToolStripMenuItem("Buscar actualizaciones", null,
+                _trayCheckUpdatesMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.CheckUpdates"), null,
                     async (s, e) => await CheckForUpdatesAsync(true));
                 contextMenu.Opening += TrayContextMenu_Opening;
                 contextMenu.Items.Add(_trayStatusMenuItem);
@@ -210,10 +214,12 @@ namespace NextDNSModernWPF
                 contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
                 contextMenu.Items.Add(_trayRefreshStatusMenuItem);
                 contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-                contextMenu.Items.Add("Abrir", null, (s, e) => RestoreFromTray());
+                _trayOpenMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.Open"), null, (s, e) => RestoreFromTray());
+                contextMenu.Items.Add(_trayOpenMenuItem);
                 contextMenu.Items.Add(_trayCheckUpdatesMenuItem);
                 contextMenu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-                contextMenu.Items.Add("Salir (Ctrl+Q)", null, (s, e) => ExitApplication());
+                _trayExitMenuItem = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Tray.Exit"), null, (s, e) => ExitApplication());
+                contextMenu.Items.Add(_trayExitMenuItem);
                 notifyIcon.ContextMenuStrip = contextMenu;
                 notifyIcon.Visible = true;
 
@@ -288,6 +294,32 @@ namespace NextDNSModernWPF
         {
             cmbTheme.SelectionChanged -= CmbTheme_SelectionChanged;
             ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
+            LocalizationManager.LanguageChanged -= LocalizationManager_LanguageChanged;
+        }
+
+        private void LocalizationManager_LanguageChanged(object sender, EventArgs e)
+        {
+            if (_demoCaptureMode || _trayDisposed) return;
+            brokerStatusError = LocalizationManager.TranslateExistingText(brokerStatusError);
+            RefreshLocalizedCodeMessages();
+            RefreshLocalizedTrayText();
+            RefreshApiLocalizedChoices();
+            UpdateUI();
+            RefreshTrayProfiles();
+        }
+
+        private void RefreshLocalizedTrayText()
+        {
+            if (_trayEnableMenuItem is not null) _trayEnableMenuItem.Text = LocalizationManager.Get("Code.Tray.EnableNextDns");
+            if (_trayDisableMenuItem is not null) _trayDisableMenuItem.Text = needsDnsRestore
+                ? LocalizationManager.Get("Code.Home.RestoreDns")
+                : LocalizationManager.Get("Code.Tray.DeactivateNextDns");
+            if (_trayRefreshStatusMenuItem is not null) _trayRefreshStatusMenuItem.Text = LocalizationManager.Get("Code.Tray.RefreshStatus");
+            if (_trayCheckUpdatesMenuItem is not null) _trayCheckUpdatesMenuItem.Text = LocalizationManager.Get("Code.Tray.CheckUpdates");
+            if (_trayOpenMenuItem is not null) _trayOpenMenuItem.Text = LocalizationManager.Get("Code.Tray.Open");
+            if (_trayExitMenuItem is not null) _trayExitMenuItem.Text = LocalizationManager.Get("Code.Tray.Exit");
+            if (_notifyIcon is not null) _notifyIcon.Text = "NextDNS Manager";
+            RefreshPauseMenuText();
         }
 
         internal void RestoreFromTray()
@@ -386,26 +418,26 @@ namespace NextDNSModernWPF
                 if (updateTimer != null) updateTimer.Interval = TimeSpan.FromHours(24);
                 if (update == null)
                 {
-                    if (manual) System.Windows.MessageBox.Show("No hay una versión más reciente publicada.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
+                    if (manual) System.Windows.MessageBox.Show(LocalizationManager.Get("Code.Update.NoNewVersion"), LocalizationManager.Get("Code.Update.Title"), MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
                 availableUpdate = update;
-                btnUpdate.Content = $"Descargar e instalar la versión {update.Version}";
+                btnUpdate.Content = LocalizationManager.T("Code.Update.InstallVersion", update.Version);
                 btnUpdate.Visibility = Visibility.Visible;
                 string marker = Path.Combine(appDataFolder, "last-update-notified.txt");
                 bool notified = false;
                 try { notified = File.Exists(marker) && File.ReadAllText(marker).Trim() == update.Version; } catch (IOException) { }
                 if (manual || !notified)
                 {
-                    _notifyIcon.BalloonTipTitle = "Actualización disponible";
-                    _notifyIcon.BalloonTipText = $"NextDNS Manager {update.Version} ya está disponible. Haz clic para abrir la ventana y descargarla.";
+                    _notifyIcon.BalloonTipTitle = LocalizationManager.Get("Code.Update.AvailableTitle");
+                    _notifyIcon.BalloonTipText = LocalizationManager.T("Code.Update.AvailableNotification", update.Version);
                     _notifyIcon.ShowBalloonTip(8000);
                     try { File.WriteAllText(marker, update.Version); } catch (IOException) { } catch (UnauthorizedAccessException) { }
                 }
                 if (manual)
                 {
                     RestoreFromTray();
-                    System.Windows.MessageBox.Show($"La versión {update.Version} está disponible. Usa el botón de actualización en la ventana para descargar y verificar el instalador.", "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Information);
+                    System.Windows.MessageBox.Show(LocalizationManager.T("Code.Update.AvailableDetails", update.Version), LocalizationManager.Get("Code.Update.Title"), MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
@@ -413,7 +445,7 @@ namespace NextDNSModernWPF
                 if (updateTimer != null) updateTimer.Interval = TimeSpan.FromMinutes(15);
                 DiagnosticLog.WriteManager(DiagnosticEvent.UpdateCheckFailure, ex);
                 if (manual && !_trayDisposed)
-                    System.Windows.MessageBox.Show("No se pudo buscar actualizaciones. Comprueba tu conexión e inténtalo de nuevo.\n" + ex.Message, "Actualizaciones", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show(LocalizationManager.T("Code.Update.CheckFailed", UiErrorLocalizer.Localize(ex)), LocalizationManager.Get("Code.Update.Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally
             {
@@ -434,7 +466,7 @@ namespace NextDNSModernWPF
             updateInstallInProgress = true;
             updateDownloadCancellation = new CancellationTokenSource();
             btnUpdate.IsEnabled = false;
-            btnUpdate.Content = $"Descargando {update.Version}…";
+            btnUpdate.Content = LocalizationManager.T("Code.Update.DownloadingVersion", update.Version);
             btnCancelUpdate.IsEnabled = true;
             updateProgressPanel.Visibility = Visibility.Visible;
             updateProgressBar.Value = 0;
@@ -445,9 +477,10 @@ namespace NextDNSModernWPF
                 if (_trayDisposed)
                     return;
 
+                string stage = TranslateUpdateStage(value.Stage);
                 updateProgressText.Text = value.TotalBytes > 0
-                    ? $"{value.Stage} {FormatBytes(value.BytesReceived)} de {FormatBytes(value.TotalBytes)}"
-                    : value.Stage;
+                    ? LocalizationManager.T("Code.Update.ProgressWithSize", stage, FormatBytes(value.BytesReceived), FormatBytes(value.TotalBytes))
+                    : stage;
                 updateProgressBar.IsIndeterminate = value.TotalBytes <= 0;
                 updateProgressBar.Value = value.TotalBytes > 0
                     ? Math.Clamp(value.BytesReceived * 100d / value.TotalBytes, 0d, 100d)
@@ -465,20 +498,20 @@ namespace NextDNSModernWPF
                     return;
 
                 btnCancelUpdate.IsEnabled = false;
-                updateProgressText.Text = "Volviendo a comprobar la publicación…";
+                updateProgressText.Text = LocalizationManager.Get("Code.Update.RecheckingRelease");
                 installer.EnsureStillVerified();
                 UpdateLaunchCoordinator.HandoffResult handoff = await UpdateLaunchCoordinator.HandOffToUnelevatedHelperAsync(installer);
                 if (handoff == UpdateLaunchCoordinator.HandoffResult.Cancelled)
                 {
-                    updateProgressText.Text = "Instalación cancelada.";
+                    updateProgressText.Text = LocalizationManager.Get("Code.Update.InstallationCancelled");
                     return;
                 }
                 if (handoff != UpdateLaunchCoordinator.HandoffResult.Ready)
                 {
                     System.Windows.MessageBox.Show(
                         this,
-                        "No se pudo preparar o volver a verificar el instalador. No se ejecutó ningún archivo.",
-                        "Actualización no iniciada",
+                        LocalizationManager.Get("Code.Update.PreparationFailed"),
+                        LocalizationManager.Get("Code.Update.NotStartedTitle"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                     return;
@@ -489,18 +522,18 @@ namespace NextDNSModernWPF
             catch (OperationCanceledException)
             {
                 if (!_trayDisposed)
-                    updateProgressText.Text = "Descarga cancelada.";
+                    updateProgressText.Text = LocalizationManager.Get("Code.Update.DownloadCancelled");
             }
             catch (Exception ex)
             {
                 DiagnosticLog.WriteManager(DiagnosticEvent.UpdateDownloadFailure, ex);
                 if (!_trayDisposed)
                 {
-                    updateProgressText.Text = "No se pudo verificar la descarga.";
+                    updateProgressText.Text = LocalizationManager.Get("Code.Update.VerificationFailed");
                     System.Windows.MessageBox.Show(
                         this,
-                        "No se pudo descargar o verificar el instalador. No se ejecutó ningún archivo. Comprueba tu conexión e inténtalo de nuevo.",
-                        "Actualizaciones",
+                        LocalizationManager.Get("Code.Update.DownloadFailed"),
+                        LocalizationManager.Get("Code.Update.Title"),
                         MessageBoxButton.OK,
                         MessageBoxImage.Warning);
                 }
@@ -514,7 +547,7 @@ namespace NextDNSModernWPF
                 {
                     btnUpdate.IsEnabled = availableUpdate != null;
                     if (availableUpdate != null)
-                        btnUpdate.Content = $"Descargar e instalar la versión {availableUpdate.Version}";
+                        btnUpdate.Content = LocalizationManager.T("Code.Update.InstallVersion", availableUpdate.Version);
                     btnCancelUpdate.IsEnabled = false;
                     updateProgressPanel.Visibility = Visibility.Collapsed;
                     UpdateTrayMenuState();
@@ -527,6 +560,14 @@ namespace NextDNSModernWPF
         private static string FormatBytes(long bytes) => bytes >= 1024 * 1024
             ? $"{bytes / 1024d / 1024d:0.0} MB"
             : $"{bytes / 1024d:0.0} KB";
+
+        private static string TranslateUpdateStage(string stage) => stage switch
+        {
+            "Descargando SHA256SUMS…" => LocalizationManager.Get("Code.Update.StageChecksums"),
+            "Descargando instalador…" => LocalizationManager.Get("Code.Update.StageInstaller"),
+            "Descarga verificada." => LocalizationManager.Get("Code.Update.StageVerified"),
+            _ => stage
+        };
 
         private async void BtnAction_Click(object sender, RoutedEventArgs e) => await PerformActionAsync();
 
@@ -553,14 +594,14 @@ namespace NextDNSModernWPF
                 {
                     if (selectedProfile == null)
                     {
-                        System.Windows.MessageBox.Show("Selecciona un perfil.", "Perfil requerido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        System.Windows.MessageBox.Show(LocalizationManager.Get("Code.Profile.SelectRequired"), LocalizationManager.Get("Code.Profile.RequiredTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
 
                     profileId = selectedProfile.ID;
                     if (!IsValidProfileId(profileId))
                     {
-                        System.Windows.MessageBox.Show("El ID del perfil debe tener exactamente 6 caracteres hexadecimales.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        System.Windows.MessageBox.Show(LocalizationManager.Get("Code.Profile.InvalidId"), LocalizationManager.Get("Code.Profile.InvalidTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         return;
                     }
                 }
@@ -583,18 +624,20 @@ namespace NextDNSModernWPF
                 }
                 else
                 {
-                    throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo completar la operación." : response.Error);
+                    throw new InvalidOperationException(UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
+                        ? "El broker no pudo completar la operación."
+                        : response.Error));
                 }
             }
             catch (Exception ex)
             {
                 DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, ex);
-                brokerStatusError = ex.Message;
+                brokerStatusError = UiErrorLocalizer.Localize(ex);
                 brokerStatusUncertain = true;
                 brokerActionInProgress = false;
                 await CheckCurrentStatusAsync();
                 if (!_trayDisposed)
-                    System.Windows.MessageBox.Show(ex.Message, "No se confirmó la operación", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    System.Windows.MessageBox.Show(UiErrorLocalizer.Localize(ex), LocalizationManager.Get("Code.Profile.OperationUnconfirmedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
             finally
             {
@@ -657,7 +700,7 @@ namespace NextDNSModernWPF
                         break;
                     if (!IsValidProfileId(target.ID))
                     {
-                        System.Windows.MessageBox.Show("El ID del perfil debe tener exactamente 6 caracteres hexadecimales.", "Perfil inválido", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        System.Windows.MessageBox.Show(LocalizationManager.Get("Code.Profile.InvalidId"), LocalizationManager.Get("Code.Profile.InvalidTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         SelectProfileById(activeProfileId);
                         continue;
                     }
@@ -682,7 +725,9 @@ namespace NextDNSModernWPF
                             SetupRouter = chkSetupRouter.IsChecked == true
                         });
                         if (!response.Success)
-                            throw new InvalidOperationException(string.IsNullOrWhiteSpace(response.Error) ? "El broker no pudo cambiar de perfil." : response.Error);
+                            throw new InvalidOperationException(UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
+                                ? "El broker no pudo cambiar de perfil."
+                                : response.Error));
                         ApplyBrokerStatus(response);
                         if (!response.Active || !string.Equals(response.ProfileId, target.ID, StringComparison.OrdinalIgnoreCase))
                             throw new InvalidOperationException("El broker no confirmó el perfil seleccionado.");
@@ -691,7 +736,7 @@ namespace NextDNSModernWPF
                     {
                         DiagnosticLog.WriteManager(DiagnosticEvent.ProfileSwitchFailure, ex);
                         switchError = ex;
-                        brokerStatusError = ex.Message;
+                        brokerStatusError = UiErrorLocalizer.Localize(ex);
                         brokerStatusUncertain = true;
                     }
                     finally
@@ -711,7 +756,7 @@ namespace NextDNSModernWPF
                         }
                         SelectProfileById(activeProfileId);
                         if (!_trayDisposed)
-                            System.Windows.MessageBox.Show(switchError.Message, "No se confirmó el cambio de perfil", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            System.Windows.MessageBox.Show(UiErrorLocalizer.Localize(switchError), LocalizationManager.Get("Code.Profile.SwitchUnconfirmedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         if (brokerStatusUncertain || !isProtected || needsDnsRestore)
                             pendingProfileSelection = null;
                     }
@@ -759,7 +804,9 @@ namespace NextDNSModernWPF
                 }
                 else
                 {
-                    brokerStatusError = string.IsNullOrWhiteSpace(response.Error) ? "No se pudo consultar el estado del broker." : response.Error;
+                    brokerStatusError = UiErrorLocalizer.Localize(string.IsNullOrWhiteSpace(response.Error)
+                        ? "No se pudo consultar el estado del broker."
+                        : response.Error);
                     brokerStatusUncertain = true;
                 }
             }
@@ -768,7 +815,7 @@ namespace NextDNSModernWPF
                 // A failed status request is not evidence that protection is off.
                 // Preserve the last confirmed state; on first launch keep status unknown.
                 DiagnosticLog.WriteManager(DiagnosticEvent.BrokerStatusCheckFailure, ex);
-                brokerStatusError = ex.Message;
+                brokerStatusError = UiErrorLocalizer.Localize(ex);
                 brokerStatusUncertain = true;
             }
             finally { statusCheckInProgress = false; }
@@ -811,62 +858,67 @@ namespace NextDNSModernWPF
             btnAction.IsEnabled = !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
             if (needsDnsRestore)
             {
-                lblStatus.Text = "REQUIERE ATENCIÓN";
+                lblStatus.Tag = "NeedsAttention";
+                lblStatus.Text = LocalizationManager.Get("Code.Home.StatusNeedsAttention");
                 lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusAttention");
                 string priorProfile = string.IsNullOrWhiteSpace(activeProfileId)
                     ? string.Empty
-                    : $" Perfil anterior: {GetProfileDisplayName(activeProfileId)}.";
-                lblInfo.Text = "La protección requiere recuperación o hay una configuración DNS pendiente." + priorProfile;
-                btnAction.Content = "RESTABLECER DNS";
+                    : LocalizationManager.T("Code.Home.PreviousProfile", GetProfileDisplayName(activeProfileId));
+                lblInfo.Text = LocalizationManager.Get("Code.Home.RecoveryNeeded") + priorProfile;
+                btnAction.Content = LocalizationManager.Get("Code.Home.RestoreDns");
                 SetActionButtonTheme("NextBlue", "ActionButtonForeground");
                 return;
             }
             if (!hasBrokerStatus)
             {
-                lblStatus.Text = "ESTADO DESCONOCIDO";
+                lblStatus.Tag = null;
+                lblStatus.Text = LocalizationManager.Get("Main.Ui.Home.UnknownStatus");
                 lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
-                lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError) ? "Verificando servicio..." : brokerStatusError;
-                btnAction.Content = "ACTIVAR";
+                lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError) ? LocalizationManager.Get("Main.Ui.Home.VerifyingService") : brokerStatusError;
+                btnAction.Content = LocalizationManager.Get("Main.Ui.Home.Activate");
                 SetActionButtonTheme("NextBlue", "ActionButtonForeground");
                 return;
             }
 
             if (_pauseUntil.HasValue && !isProtected)
             {
-                lblStatus.Text = "PAUSADO";
+                lblStatus.Tag = "Paused";
+                lblStatus.Text = LocalizationManager.Get("Code.Home.StatusPaused");
                 lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusAttention");
-                lblInfo.Text = $"La protección se reanudará después de las {_pauseUntil.Value.ToLocalTime():HH:mm}. Reanúdala para cambiar de perfil.";
-                btnAction.Content = "ACTIVAR";
+                lblInfo.Text = LocalizationManager.T("Code.Home.PausedUntil", _pauseUntil.Value.ToLocalTime().ToString("HH:mm", LocalizationManager.Instance.ActiveCulture));
+                btnAction.Content = LocalizationManager.Get("Main.Ui.Home.Activate");
                 SetActionButtonTheme("NextBlue", "ActionButtonForeground");
                 return;
             }
             if (isProtected)
             {
-                lblStatus.Text = "PROTEGIDO";
+                lblStatus.Tag = "Protected";
+                lblStatus.Text = LocalizationManager.Get("Code.Home.StatusProtected");
                 lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "StatusProtected");
                 if (profileSwitchInProgress)
                 {
-                    lblInfo.Text = $"Cambiando al perfil: {switchingToProfile?.Name ?? "seleccionado"}...";
-                    btnAction.Content = "CAMBIANDO PERFIL";
+                    lblInfo.Text = LocalizationManager.T("Code.Home.SwitchingToProfile", switchingToProfile?.Name ?? LocalizationManager.Get("Code.Home.SelectedProfile"));
+                    btnAction.Content = LocalizationManager.Get("Code.Home.ChangingProfile");
                     return;
                 }
                 string profileLabel = string.IsNullOrWhiteSpace(activeProfileId)
-                    ? "Perfil activo: no informado"
-                    : $"Perfil activo: {GetProfileDisplayName(activeProfileId)}";
+                    ? LocalizationManager.Get("Code.Home.ActiveProfileUnknown")
+                    : LocalizationManager.Get("Main.Ui.Common.ActiveProfile") + " " + GetProfileDisplayName(activeProfileId);
                 lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError)
                     ? profileLabel
                     : profileLabel + Environment.NewLine + brokerStatusError;
-                btnAction.Content = "DESACTIVAR";
+                btnAction.Content = LocalizationManager.Get("Code.Home.Deactivate");
                 SetActionButtonTheme("ActionButtonDestructiveBackground", "ActionButtonDestructiveForeground");
             }
             else
             {
-                lblStatus.Text = "DESPROTEGIDO";
+                lblStatus.Tag = null;
+                lblStatus.Text = LocalizationManager.Get("Code.Home.StatusUnprotected");
                 lblStatus.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
                 lblInfo.Text = string.IsNullOrWhiteSpace(brokerStatusError)
-                    ? "NextDNS Manager no está activo"
-                    : "NextDNS Manager no está activo" + Environment.NewLine + brokerStatusError;
-                btnAction.Content = "ACTIVAR";
+                    ? LocalizationManager.Get("Code.Home.ManagerInactive")
+                    : LocalizationManager.Get("Code.Home.ManagerInactive") + Environment.NewLine + brokerStatusError;
+                btnAction.Content = LocalizationManager.Get("Main.Ui.Home.Activate");
                 SetActionButtonTheme("NextBlue", "ActionButtonForeground");
             }
         }
@@ -882,26 +934,26 @@ namespace NextDNSModernWPF
             if (_trayDisposed || _trayStatusMenuItem == null) return;
 
             string confirmedState = !hasBrokerStatus
-                ? "desconocido"
+                ? LocalizationManager.Get("Code.Tray.StateUnknown")
                 : needsDnsRestore
-                    ? "requiere restauración DNS"
+                    ? LocalizationManager.Get("Code.Tray.StateNeedsDnsRestore")
                     : _pauseUntil.HasValue
-                        ? $"pausado hasta {_pauseUntil.Value.ToLocalTime():HH:mm}"
+                        ? LocalizationManager.T("Code.Tray.StatePausedUntil", _pauseUntil.Value.ToLocalTime().ToString("HH:mm", LocalizationManager.Instance.ActiveCulture))
                     : isProtected
-                        ? $"activo · {GetProfileDisplayName(activeProfileId ?? string.Empty)}"
-                        : "inactivo";
+                        ? LocalizationManager.T("Code.Tray.StateActive", GetProfileDisplayName(activeProfileId ?? string.Empty))
+                        : LocalizationManager.Get("Code.Tray.StateInactive");
             if (brokerStatusUncertain)
                 _trayStatusMenuItem.Text = hasBrokerStatus
-                    ? $"Estado sin confirmar (último: {confirmedState})"
-                    : "Estado sin confirmar";
+                    ? LocalizationManager.T("Code.Tray.UnconfirmedWithLast", confirmedState)
+                    : LocalizationManager.Get("Code.Tray.Unconfirmed");
             else if (statusCheckInProgress)
-                _trayStatusMenuItem.Text = $"Consultando estado (último: {confirmedState})";
+                _trayStatusMenuItem.Text = LocalizationManager.T("Code.Tray.CheckingWithLast", confirmedState);
             else if (profileSwitchInProgress)
-                _trayStatusMenuItem.Text = $"Cambiando perfil a {switchingToProfile?.Name ?? "seleccionado"}…";
+                _trayStatusMenuItem.Text = LocalizationManager.T("Code.Tray.SwitchingToProfile", switchingToProfile?.Name ?? LocalizationManager.Get("Code.Home.SelectedProfile"));
             else if (brokerActionInProgress)
-                _trayStatusMenuItem.Text = "Operación de NextDNS en curso…";
+                _trayStatusMenuItem.Text = LocalizationManager.Get("Code.Tray.OperationInProgress");
             else
-                _trayStatusMenuItem.Text = $"Estado: {confirmedState}";
+                _trayStatusMenuItem.Text = LocalizationManager.T("Code.Tray.State", confirmedState);
 
             bool canRunAction = hasBrokerStatus && !brokerStatusUncertain &&
                 !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
@@ -909,7 +961,7 @@ namespace NextDNSModernWPF
                 _trayEnableMenuItem.Enabled = canRunAction && !isProtected && !needsDnsRestore;
             if (_trayDisableMenuItem != null)
             {
-                _trayDisableMenuItem.Text = needsDnsRestore ? "Restablecer DNS" : "Desactivar NextDNS";
+                _trayDisableMenuItem.Text = needsDnsRestore ? LocalizationManager.Get("Code.Home.RestoreDns") : LocalizationManager.Get("Code.Tray.DeactivateNextDns");
                 _trayDisableMenuItem.Enabled = canRunAction && (isProtected || needsDnsRestore || _pauseUntil.HasValue);
             }
             if (_trayRefreshStatusMenuItem != null)
@@ -930,7 +982,7 @@ namespace NextDNSModernWPF
             catch (Exception exception)
             {
                 DiagnosticLog.WriteManager(DiagnosticEvent.DiagnosticsViewFailure, exception);
-                System.Windows.MessageBox.Show("No se pudo abrir el panel de diagnóstico.", "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+                System.Windows.MessageBox.Show(LocalizationManager.Get("Code.Diagnostics.OpenFailed"), "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -951,28 +1003,28 @@ namespace NextDNSModernWPF
             string id = txtID.Text.Trim();
             if (name.Length == 0)
             {
-                SetProfileFormMessage("Escribe un nombre para el perfil.", "StatusAttention");
+                SetProfileFormMessage(LocalizationManager.Get("Code.Profile.EnterName"), "StatusAttention");
                 txtName.Focus();
                 return;
             }
 
             if (!IsValidProfileId(id))
             {
-                SetProfileFormMessage("El ID debe tener exactamente 6 caracteres hexadecimales (0–9, A–F).", "StatusAttention");
+                SetProfileFormMessage(LocalizationManager.Get("Code.Profile.InvalidIdWithHexRange"), "StatusAttention");
                 txtID.Focus();
                 return;
             }
 
             if (profiles.Any(profile => string.Equals(profile.ID?.Trim(), id, StringComparison.OrdinalIgnoreCase)))
             {
-                SetProfileFormMessage("Ya existe un perfil con ese ID.", "StatusAttention");
+                SetProfileFormMessage(LocalizationManager.Get("Code.Profile.DuplicateId"), "StatusAttention");
                 txtID.Focus();
                 return;
             }
 
             if (profiles.Any(profile => string.Equals(profile.Name?.Trim(), name, StringComparison.OrdinalIgnoreCase)))
             {
-                SetProfileFormMessage("Ya existe un perfil con ese nombre.", "StatusAttention");
+                SetProfileFormMessage(LocalizationManager.Get("Code.Profile.DuplicateName"), "StatusAttention");
                 txtName.Focus();
                 return;
             }
@@ -997,7 +1049,7 @@ namespace NextDNSModernWPF
 
             txtName.Clear();
             txtID.Clear();
-            SetProfileFormMessage("Perfil agregado. El perfil activo no cambió.", "StatusProtected");
+            SetProfileFormMessage(LocalizationManager.Get("Code.Profile.Added"), "StatusProtected");
         }
 
         private void BtnDel_Click(object sender, RoutedEventArgs e)
@@ -1012,7 +1064,7 @@ namespace NextDNSModernWPF
 
             profiles = updatedProfiles;
             RefreshCombo();
-            SetProfileFormMessage("Perfil eliminado.", "TextSecondary");
+            SetProfileFormMessage(LocalizationManager.Get("Code.Profile.Deleted"), "TextSecondary");
         }
 
         private void LoadProfiles()
@@ -1042,11 +1094,11 @@ namespace NextDNSModernWPF
             catch (Exception exception)
             {
                 DiagnosticLog.WriteManager(DiagnosticEvent.ProfilesSaveFailure, exception);
-                SetProfileFormMessage("No se pudo guardar. El perfil no se agregó ni se cambió en la lista.", "StatusAttention");
+                SetProfileFormMessage(LocalizationManager.Get("Code.Profile.SaveFailed"), "StatusAttention");
                 System.Windows.MessageBox.Show(
                     this,
-                    "No se guardaron los cambios de perfiles. La lista y el perfil activo no cambiaron.\n\n" + exception.Message,
-                    "No se guardó el perfil",
+                    LocalizationManager.T("Code.Profile.SaveFailedDetails", UiErrorLocalizer.Localize(exception)),
+                    LocalizationManager.Get("Code.Profile.SaveFailedTitle"),
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Warning);
                 return false;

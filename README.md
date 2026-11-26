@@ -23,7 +23,7 @@
 - **Gestionar listas:** consultar permitidos y bloqueados, agregar, activar o desactivar entradas e importar/exportar listas.
 - **Revisar actividad:** consultar dominios por perfil y dispositivo, filtrar resultados y fechas, mostrar bloqueos y seguir consultas en vivo.
 - **Editar opciones compatibles:** consultar y cambiar ajustes remotos disponibles en la API de NextDNS.
-- **Personalizar y diagnosticar:** modos claro, oscuro y automático; registros de diagnóstico sanitizados y búsqueda de actualizaciones desde la aplicación.
+- **Personalizar y diagnosticar:** modos claro, oscuro y automático; interfaz en español, inglés, francés, portugués y alemán con selección manual o detección del idioma de Windows; registros de diagnóstico sanitizados y búsqueda de actualizaciones desde la aplicación.
 
 Las funciones remotas requieren una clave API válida y dependen de los permisos, la configuración y la disponibilidad de la API de NextDNS. El control local de la protección no requiere esa clave.
 

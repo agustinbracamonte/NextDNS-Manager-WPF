@@ -33,8 +33,8 @@ public partial class MainWindow
             var rows = snapshot.Adapters.Where(a => a.IsOperational && a.Type != "Loopback" && a.DnsServers.Length > 0)
                 .Select(a => $"{a.Name}: {string.Join(", ", a.DnsServers)}");
             string result = string.Join("\n", rows);
-            _dnsSummary.Text = string.IsNullOrWhiteSpace(result) ? "No hay DNS configurado disponible." : result;
+            _dnsSummary.Text = string.IsNullOrWhiteSpace(result) ? LocalizationManager.Get("Code.Network.NoDnsConfigured") : result;
         }
-        catch { _dnsSummary.Text = "No se pudo consultar la configuración de red."; }
+        catch { _dnsSummary.Text = LocalizationManager.Get("Code.Network.ReadFailed"); }
     }
 }

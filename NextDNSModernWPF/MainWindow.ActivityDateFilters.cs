@@ -78,10 +78,12 @@ public partial class MainWindow
     private void ActivityDateValidationError(object sender, DatePickerDateValidationErrorEventArgs e)
     {
         e.ThrowException = false;
-        string fieldName = ReferenceEquals(sender, dpActivityFrom) ? "Desde" : "Hasta";
+        string fieldName = LocalizationManager.Get(ReferenceEquals(sender, dpActivityFrom)
+            ? "Code.Activity.DateFrom"
+            : "Code.Activity.DateTo");
         _activityDateRangeInvalid = true;
         if (lblActivityDateValidation is not null)
-            lblActivityDateValidation.Text = $"La fecha de {fieldName} no es válida.";
+            lblActivityDateValidation.Text = LocalizationManager.T("Code.Activity.InvalidDate", fieldName);
 
         _syncingActivityDateControls = true;
         try
@@ -162,18 +164,18 @@ public partial class MainWindow
         string validation = string.Empty;
 
         if (!TryGetActivityDateUtc(dpActivityFrom, cmbActivityFromHour, cmbActivityFromMinute,
-                "Desde", out fromText, out fromInstant, out validation))
+                LocalizationManager.Get("Code.Activity.DateFrom"), out fromText, out fromInstant, out validation))
         {
             fromText = "invalid-local-date";
         }
         else if (!TryGetActivityDateUtc(dpActivityTo, cmbActivityToHour, cmbActivityToMinute,
-                     "Hasta", out toText, out toInstant, out validation))
+                     LocalizationManager.Get("Code.Activity.DateTo"), out toText, out toInstant, out validation))
         {
             toText = "invalid-local-date";
         }
         else if (fromInstant.HasValue && toInstant.HasValue && fromInstant.Value >= toInstant.Value)
         {
-            validation = "Desde debe ser anterior a Hasta. El límite Hasta es exclusivo.";
+            validation = LocalizationManager.Get("Code.Activity.InvalidDateRange");
             fromText = "invalid-date-range";
         }
 
@@ -208,7 +210,7 @@ public partial class MainWindow
             !int.TryParse(minuteSelector.SelectedItem as string, NumberStyles.None,
                 CultureInfo.InvariantCulture, out int minute))
         {
-            validation = $"Selecciona una hora válida para {fieldName}.";
+            validation = LocalizationManager.T("Code.Activity.InvalidTime", fieldName);
             return false;
         }
 
@@ -216,12 +218,12 @@ public partial class MainWindow
         TimeZoneInfo localZone = TimeZoneInfo.Local;
         if (localZone.IsInvalidTime(localTime))
         {
-            validation = $"La hora local de {fieldName} no existe por el cambio de horario. Elige otra hora.";
+            validation = LocalizationManager.T("Code.Activity.NonexistentLocalTime", fieldName);
             return false;
         }
         if (localZone.IsAmbiguousTime(localTime))
         {
-            validation = $"La hora local de {fieldName} ocurre dos veces por el cambio de horario. Elige otra hora.";
+            validation = LocalizationManager.T("Code.Activity.AmbiguousLocalTime", fieldName);
             return false;
         }
 

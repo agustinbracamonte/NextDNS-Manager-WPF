@@ -75,7 +75,7 @@ namespace NextDNSModernWPF
 
                 LogStartupFailure(ex);
                 System.Windows.MessageBox.Show(
-                    "No se pudo iniciar NextDNS Manager. " + ex.Message,
+                    LocalizationManager.T("Code.App.StartupFailed", UiErrorLocalizer.Localize(ex)),
                     "NextDNS Manager",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);

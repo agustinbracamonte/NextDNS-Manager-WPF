@@ -51,8 +51,8 @@ public partial class MainWindow
         if (string.IsNullOrWhiteSpace(value))
         {
             lblListsMessage.Text = allowed
-                ? "Escribe un dominio en el campo de Permitidos."
-                : "Escribe un dominio en el campo de Bloqueados.";
+                ? LocalizationManager.Get("Code.Lists.EnterAllowedDomain")
+                : LocalizationManager.Get("Code.Lists.EnterBlockedDomain");
             lblListsMessage.SetResourceReference(TextBlock.ForegroundProperty, "StatusAttention");
             e.Handled = true;
             return;

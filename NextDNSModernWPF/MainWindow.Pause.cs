@@ -20,7 +20,7 @@ public partial class MainWindow
         _pauseStatusTimer.Start();
         if (HomePauseHost is StackPanel panel)
         {
-            _pauseButton = new System.Windows.Controls.Button { Content = "Pausar", MinWidth = 150, Height = 46 };
+            _pauseButton = new System.Windows.Controls.Button { Content = LocalizationManager.Get("Code.Pause.Pause"), MinWidth = 150, Height = 46 };
             _pauseButton.SetResourceReference(FrameworkElement.StyleProperty, "QuietActionButton");
             var menu = new System.Windows.Controls.ContextMenu();
             menu.Style = (Style)FindResource("PauseContextMenu");
@@ -29,7 +29,8 @@ public partial class MainWindow
             {
                 var item = new System.Windows.Controls.MenuItem
                 {
-                    Header = $"{minutes} minutos",
+                    Header = LocalizationManager.T("Code.Pause.Minutes", minutes),
+                    Tag = minutes,
                     Style = (Style)FindResource("PauseContextMenuItem")
                 };
                 item.Click += async (_, _) => await SetPauseAsync(minutes);
@@ -45,15 +46,17 @@ public partial class MainWindow
         }
         if (_trayContextMenu is not null)
         {
-            _trayPause = new System.Windows.Forms.ToolStripMenuItem("Pausar temporalmente");
+            _trayPause = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Pause.PauseTemporarily"));
             foreach (int minutes in new[] { 5, 15, 30 })
-                _trayPause.DropDownItems.Add($"{minutes} minutos", null, async (_, _) => await SetPauseAsync(minutes));
-            _trayResume = new System.Windows.Forms.ToolStripMenuItem("Reanudar protección", null, async (_, _) => await SetPauseAsync(null));
+                _trayPause.DropDownItems.Add(new System.Windows.Forms.ToolStripMenuItem(
+                    LocalizationManager.T("Code.Pause.Minutes", minutes), null, async (_, _) => await SetPauseAsync(minutes)) { Tag = minutes });
+            _trayResume = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Pause.ResumeProtection"), null, async (_, _) => await SetPauseAsync(null));
             _trayContextMenu.Items.Insert(4, _trayPause);
             _trayContextMenu.Items.Insert(5, _trayResume);
-            _trayProfiles = new System.Windows.Forms.ToolStripMenuItem("Cambiar perfil");
+            _trayProfiles = new System.Windows.Forms.ToolStripMenuItem(LocalizationManager.Get("Code.Pause.ChangeProfile"));
             _trayContextMenu.Items.Insert(6, _trayProfiles);
         }
+        RefreshPauseMenuText();
     }
 
     private static ControlTemplate CreatePauseContextMenuTemplate()
@@ -87,7 +90,7 @@ public partial class MainWindow
         _trayProfiles.Enabled = !_pauseUntil.HasValue && hasBrokerStatus && !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && profiles.Count > 0;
         foreach (Profile profile in profiles)
         {
-            var entry = new System.Windows.Forms.ToolStripMenuItem(profile.Name ?? "Perfil") { Checked = ReferenceEquals(cmbProfiles.SelectedItem, profile) };
+            var entry = new System.Windows.Forms.ToolStripMenuItem(profile.Name ?? LocalizationManager.Get("Code.Pause.ProfileFallback")) { Checked = ReferenceEquals(cmbProfiles.SelectedItem, profile) };
             entry.Click += (_, _) => cmbProfiles.SelectedItem = profile;
             _trayProfiles.DropDownItems.Add(entry);
         }
@@ -101,14 +104,14 @@ public partial class MainWindow
         try
         {
             var response = await brokerClient.SendAsync(new BrokerRequest { Operation = minutes.HasValue ? "pause" : "resume", PauseMinutes = minutes });
-            if (!response.Success) throw new InvalidOperationException(response.Error ?? "No se pudo cambiar la pausa.");
+            if (!response.Success) throw new InvalidOperationException(UiErrorLocalizer.Localize(response.Error ?? "No se pudo cambiar la pausa."));
             ApplyBrokerStatus(response);
         }
         catch (Exception error)
         {
             brokerStatusUncertain = true;
             brokerActionInProgress = false;
-            System.Windows.MessageBox.Show(error.Message, "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
+            System.Windows.MessageBox.Show(UiErrorLocalizer.Localize(error), "NextDNS Manager", MessageBoxButton.OK, MessageBoxImage.Warning);
             await CheckCurrentStatusAsync();
         }
         finally { brokerActionInProgress = false; UpdateUI(); }
@@ -119,10 +122,42 @@ public partial class MainWindow
         bool canChange = hasBrokerStatus && !brokerStatusUncertain && !brokerActionInProgress && !profileSwitchInProgress && !statusCheckInProgress;
         if (_pauseButton is not null)
         {
-            _pauseButton.Content = _pauseUntil.HasValue ? "Reanudar" : "Pausar";
+            _pauseButton.Content = _pauseUntil.HasValue
+                ? LocalizationManager.Get("Code.Pause.Resume")
+                : LocalizationManager.Get("Code.Pause.Pause");
             _pauseButton.IsEnabled = canChange && (isProtected || _pauseUntil.HasValue);
         }
         if (_trayPause is not null) _trayPause.Enabled = canChange && isProtected;
         if (_trayResume is not null) _trayResume.Enabled = canChange && _pauseUntil.HasValue;
+    }
+
+    private void RefreshPauseMenuText()
+    {
+        if (_pauseButton is not null)
+        {
+            _pauseButton.Content = _pauseUntil.HasValue
+                ? LocalizationManager.Get("Code.Pause.Resume")
+                : LocalizationManager.Get("Code.Pause.Pause");
+            if (_pauseButton.ContextMenu is { } menu)
+            {
+                foreach (object item in menu.Items)
+                {
+                    if (item is System.Windows.Controls.MenuItem pauseItem && pauseItem.Tag is int minutes)
+                        pauseItem.Header = LocalizationManager.T("Code.Pause.Minutes", minutes);
+                }
+            }
+        }
+
+        if (_trayPause is not null)
+        {
+            _trayPause.Text = LocalizationManager.Get("Code.Pause.PauseTemporarily");
+            foreach (System.Windows.Forms.ToolStripItem item in _trayPause.DropDownItems)
+            {
+                if (item.Tag is int minutes)
+                    item.Text = LocalizationManager.T("Code.Pause.Minutes", minutes);
+            }
+        }
+        if (_trayResume is not null) _trayResume.Text = LocalizationManager.Get("Code.Pause.ResumeProtection");
+        if (_trayProfiles is not null) _trayProfiles.Text = LocalizationManager.Get("Code.Pause.ChangeProfile");
     }
 }

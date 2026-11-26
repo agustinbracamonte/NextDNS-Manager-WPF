@@ -1,5 +1,5 @@
 #define MyAppName "NextDNS Manager"
-#define MyAppVersion "2.2.0"
+#define MyAppVersion "2.3.0"
 #define MyAppPublisher "Agustín Bracamonte"
 #define MyAppExeName "NextDNSModernWPF.exe"
 
@@ -32,11 +32,11 @@ DisableProgramGroupPage=yes
 AppMutex=NextDNSManagerWPF-Running
 RestartApplications=no
 OutputDir=..\artifacts
-OutputBaseFilename=NextDNS-Manager-2.2.0-Setup-x64
+OutputBaseFilename=NextDNS-Manager-{#MyAppVersion}-Setup-x64
 Compression=lzma2/ultra64
 SolidCompression=yes
 SetupLogging=yes
-VersionInfoVersion=2.2.0.0
+VersionInfoVersion=2.3.0.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=Instalador de NextDNS Manager
 VersionInfoProductName={#MyAppName}
@@ -49,7 +49,7 @@ Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
 Name: "desktopicon"; Description: "Crear un acceso directo en el escritorio"; GroupDescription: "Accesos directos:"; Flags: unchecked
 
 [Files]
-Source: "..\artifacts\publish-2.2.0-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\artifacts\publish-{#MyAppVersion}-win-x64\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\NextDNSManager.ico"

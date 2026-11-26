@@ -9,12 +9,14 @@ public partial class MainWindow
     {
         if (_apiOperationInProgress || _nextDnsApiClient is null || SelectedApiProfileId is null) return;
         bool wasLive = _activityStreamCancellation is not null;
-        await StopActivityStreamAsync("Se cambió el filtro de actividad.");
+        await StopActivityStreamAsync(LocalizationManager.Get("Code.Activity.FiltersChangedStreamStopped"));
         bool enable = (cmbActivityStatus.SelectedItem as ActivityStatusChoice)?.Status != NextDnsLogStatus.Blocked;
         _bindingActivityFilters = true;
         try { cmbActivityStatus.SelectedIndex = enable ? 3 : 0; }
         finally { _bindingActivityFilters = false; }
-        btnBlockedOnly.Content = enable ? "Bloqueados ✓" : "Solo bloqueados";
+        btnBlockedOnly.Content = enable
+            ? LocalizationManager.Get("Code.Activity.BlockedOnlyActive")
+            : LocalizationManager.Get("Main.Ui.Activity.BlockedOnly");
         _activityQuery = null;
         _activityCursor = null;
         _activityStreamId = null;

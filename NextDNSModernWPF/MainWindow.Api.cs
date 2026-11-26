@@ -55,6 +55,7 @@ public partial class MainWindow
     private bool _bindingApiProfiles;
     private bool _bindingActivityDevices;
     private bool _bindingActivityFilters;
+    private bool _refreshingLocalizedChoices;
     private bool _responsiveWindowSized;
     private bool _apiKeyVisible;
     private bool _apiKeyVisibilityChanging;
@@ -149,20 +150,20 @@ public partial class MainWindow
 
         cmbImportListTarget.ItemsSource = new[]
         {
-            new ImportListChoice("Lista permitida", NextDnsListType.Allowlist),
-            new ImportListChoice("Lista bloqueada", NextDnsListType.Denylist)
+            new ImportListChoice(LocalizationManager.Get("Code.Lists.AllowlistLabel"), NextDnsListType.Allowlist),
+            new ImportListChoice(LocalizationManager.Get("Code.Lists.BlocklistLabel"), NextDnsListType.Denylist)
         };
         cmbImportListTarget.SelectedIndex = 0;
         cmbActivityStatus.ItemsSource = new[]
         {
-            new ActivityStatusChoice("Todos los resultados", null),
-            new ActivityStatusChoice("Predeterminado", NextDnsLogStatus.Default),
-            new ActivityStatusChoice("Error", NextDnsLogStatus.Error),
-            new ActivityStatusChoice("Bloqueado", NextDnsLogStatus.Blocked),
-            new ActivityStatusChoice("Permitido", NextDnsLogStatus.Allowed)
+            new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.AllResults"), null),
+            new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusDefault"), NextDnsLogStatus.Default),
+            new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusError"), NextDnsLogStatus.Error),
+            new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusBlocked"), NextDnsLogStatus.Blocked),
+            new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusAllowed"), NextDnsLogStatus.Allowed)
         };
         cmbActivityStatus.SelectedIndex = 0;
-        cmbActivityDevice.ItemsSource = new[] { new ActivityDeviceChoice("Todos los dispositivos", null) };
+        cmbActivityDevice.ItemsSource = new[] { new ActivityDeviceChoice(LocalizationManager.Get("Code.Activity.AllDevices"), null) };
         cmbActivityDevice.SelectedIndex = 0;
 
         btnVerifyApiKey.Click += BtnVerifyApiKey_Click;
@@ -219,7 +220,7 @@ public partial class MainWindow
         if (_apiKeyStore.HasApiKey)
             _ = RestoreStoredApiKeyAsync();
         else
-            SetApiConnectionStatus("API no conectada. Guarda una clave para comenzar.", "TextSecondary");
+            SetApiConnectionStatus(LocalizationManager.Get("Code.Api.NotConnectedSaveKey"), "TextSecondary");
     }
 
     private void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -256,18 +257,97 @@ public partial class MainWindow
 
     private void MainWindow_ApiDeactivated(object? sender, EventArgs e) => ConcealApiKeyInput();
 
+    private void RefreshApiLocalizedChoices()
+    {
+        if (!_apiUiInitialized) return;
+
+        NextDnsListType? selectedList = (cmbImportListTarget.SelectedItem as ImportListChoice)?.Type;
+        NextDnsLogStatus? selectedStatus = (cmbActivityStatus.SelectedItem as ActivityStatusChoice)?.Status;
+        string? selectedDeviceId = (cmbActivityDevice.SelectedItem as ActivityDeviceChoice)?.Id;
+        string? selectedDeviceName = selectedDeviceId is null ? null : _activityDevices.GetValueOrDefault(selectedDeviceId);
+
+        _refreshingLocalizedChoices = true;
+        try
+        {
+            cmbImportListTarget.ItemsSource = new[]
+            {
+                new ImportListChoice(LocalizationManager.Get("Code.Lists.AllowlistLabel"), NextDnsListType.Allowlist),
+                new ImportListChoice(LocalizationManager.Get("Code.Lists.BlocklistLabel"), NextDnsListType.Denylist)
+            };
+            cmbImportListTarget.SelectedItem = cmbImportListTarget.Items
+                .OfType<ImportListChoice>().FirstOrDefault(choice => choice.Type == selectedList) ?? cmbImportListTarget.Items[0];
+
+            cmbActivityStatus.ItemsSource = new[]
+            {
+                new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.AllResults"), null),
+                new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusDefault"), NextDnsLogStatus.Default),
+                new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusError"), NextDnsLogStatus.Error),
+                new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusBlocked"), NextDnsLogStatus.Blocked),
+                new ActivityStatusChoice(LocalizationManager.Get("Code.Activity.StatusAllowed"), NextDnsLogStatus.Allowed)
+            };
+            cmbActivityStatus.SelectedItem = cmbActivityStatus.Items
+                .OfType<ActivityStatusChoice>().FirstOrDefault(choice => choice.Status == selectedStatus) ?? cmbActivityStatus.Items[0];
+            RebuildActivityDeviceChoices(selectedDeviceId, selectedDeviceName);
+        }
+        finally { _refreshingLocalizedChoices = false; }
+        SetApiKeyVisibilityLabel();
+        UpdateActivityEmptyDescription();
+    }
+
+    private void RefreshLocalizedCodeMessages()
+    {
+        if (lblApiConnectionStatus is not null)
+            lblApiConnectionStatus.Text = LocalizationManager.TranslateExistingText(lblApiConnectionStatus.Text);
+        if (lblListsMessage is not null)
+            lblListsMessage.Text = LocalizationManager.TranslateExistingText(lblListsMessage.Text);
+        if (lblActivityMessage is not null)
+            lblActivityMessage.Text = LocalizationManager.TranslateExistingText(lblActivityMessage.Text);
+        if (lblApiSettingsStatus is not null)
+            lblApiSettingsStatus.Text = LocalizationManager.TranslateExistingText(lblApiSettingsStatus.Text);
+        if (lblBulkImportResult is not null)
+            lblBulkImportResult.Text = LocalizationManager.TranslateExistingText(lblBulkImportResult.Text);
+        if (lblImportPreviewSummary is not null)
+            lblImportPreviewSummary.Text = LocalizationManager.TranslateExistingText(lblImportPreviewSummary.Text);
+        if (lblImportIssues is not null)
+            lblImportIssues.Text = LocalizationManager.TranslateExistingText(lblImportIssues.Text);
+        if (lblActivityDateValidation is not null)
+            lblActivityDateValidation.Text = LocalizationManager.TranslateExistingText(lblActivityDateValidation.Text);
+        if (lblProfileMessage is not null)
+            lblProfileMessage.Text = LocalizationManager.TranslateExistingText(lblProfileMessage.Text);
+        if (updateProgressText is not null)
+            updateProgressText.Text = LocalizationManager.TranslateExistingText(updateProgressText.Text);
+        if (_dnsSummary is not null)
+            _dnsSummary.Text = LocalizationManager.TranslateExistingText(_dnsSummary.Text);
+        if (btnUpdate is not null && !string.IsNullOrEmpty(btnUpdate.Content as string))
+            btnUpdate.Content = LocalizationManager.TranslateExistingText((string)btnUpdate.Content);
+
+        if (lstImportIssues.ItemsSource is IEnumerable<string> importIssues)
+            lstImportIssues.ItemsSource = importIssues.Select(LocalizationManager.TranslateExistingText).ToArray();
+
+        if (btnBlockedOnly is not null)
+            btnBlockedOnly.Content = cmbActivityStatus.SelectedItem is ActivityStatusChoice { Status: NextDnsLogStatus.Blocked }
+                ? LocalizationManager.Get("Code.Activity.BlockedOnlyActive")
+                : LocalizationManager.Get("Main.Ui.Activity.BlockedOnly");
+        if (btnToggleActivityStream is not null)
+            btnToggleActivityStream.Content = LocalizationManager.Get(_activityStreamCancellation is not null
+                ? "Code.Activity.StopLive"
+                : "Main.Ui.Activity.Live");
+
+        UpdateActivityEmptyDescription();
+    }
+
     private async Task RestoreStoredApiKeyAsync()
     {
         try
         {
             string? key = _apiKeyStore.Load();
             if (string.IsNullOrEmpty(key)) return;
-            SetApiConnectionStatus("Verificando la clave guardada…", "TextSecondary");
+            SetApiConnectionStatus(LocalizationManager.Get("Code.Api.VerifyingSavedKey"), "TextSecondary");
             await VerifyAndConnectApiKeyAsync(key, saveAfterVerification: false);
         }
         catch (Exception exception)
         {
-            SetApiConnectionStatus("No se pudo cargar la clave guardada: " + exception.Message, "StatusAttention");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.LoadSavedKeyFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -285,7 +365,7 @@ public partial class MainWindow
                 key = _apiKeyStore.Load() ?? string.Empty;
             if (string.IsNullOrWhiteSpace(key))
             {
-                SetApiConnectionStatus("Escribe una clave API o guarda una antes.", "StatusAttention");
+                SetApiConnectionStatus(LocalizationManager.Get("Code.Api.EnterOrSaveKey"), "StatusAttention");
                 return;
             }
 
@@ -293,7 +373,7 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            SetApiConnectionStatus("No se pudo verificar la clave: " + exception.Message, "StatusAttention");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.VerifyKeyFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -307,7 +387,7 @@ public partial class MainWindow
         string key = CurrentApiKeyText;
         if (!IsCurrentKeyVerified(key))
         {
-            SetApiConnectionStatus("Verifica esta clave antes de guardarla.", "StatusAttention");
+            SetApiConnectionStatus(LocalizationManager.Get("Code.Api.VerifyBeforeSave"), "StatusAttention");
             return;
         }
 
@@ -315,11 +395,11 @@ public partial class MainWindow
         {
             _apiKeyStore.Save(key);
             ClearApiKeyInput();
-            SetApiConnectionStatus("Clave guardada de forma protegida para este usuario de Windows.", "StatusProtected");
+            SetApiConnectionStatus(LocalizationManager.Get("Code.Api.KeySavedProtected"), "StatusProtected");
         }
         catch (Exception exception)
         {
-            SetApiConnectionStatus("No se pudo guardar la clave: " + exception.Message, "StatusAttention");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.SaveKeyFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -332,8 +412,8 @@ public partial class MainWindow
         if (_apiOperationInProgress) return;
         System.Windows.MessageBoxResult confirm = System.Windows.MessageBox.Show(
             this,
-            "Se borrará la clave guardada y se desconectará NextDNS API en esta sesión. ¿Continuar?",
-            "Borrar clave API",
+            LocalizationManager.Get("Code.Api.DeleteKeyConfirmation"),
+            LocalizationManager.Get("Code.Api.DeleteKeyTitle"),
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Warning);
         if (confirm != System.Windows.MessageBoxResult.Yes) return;
@@ -355,14 +435,14 @@ public partial class MainWindow
             try { cmbApiProfile.ItemsSource = null; }
             finally { _bindingApiProfiles = false; }
             ClearApiProfileData();
-            await StopActivityStreamAsync("La clave se borró; el stream se detuvo.");
+            await StopActivityStreamAsync(LocalizationManager.Get("Code.Api.KeyDeletedStreamStopped"));
             previousClient?.Dispose();
             previousClient = null;
-            SetApiConnectionStatus("Clave borrada. La API está desconectada.", "TextSecondary");
+            SetApiConnectionStatus(LocalizationManager.Get("Code.Api.KeyDeletedDisconnected"), "TextSecondary");
         }
         catch (Exception exception)
         {
-            SetApiConnectionStatus("No se pudo borrar la clave: " + exception.Message, "StatusAttention");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.DeleteKeyFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -380,9 +460,9 @@ public partial class MainWindow
         catch (ArgumentException exception)
         {
             string sessionNote = _nextDnsApiClient is null
-                ? " No hay una sesión API activa."
-                : " La sesión anterior sigue conectada.";
-            SetApiConnectionStatus("La clave no es válida: " + exception.Message + sessionNote, "StatusAttention");
+                ? LocalizationManager.Get("Code.Api.NoActiveSessionSuffix")
+                : LocalizationManager.Get("Code.Api.PreviousSessionStillConnectedSuffix");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.InvalidKey", UiErrorLocalizer.Localize(exception), sessionNote), "StatusAttention");
             return false;
         }
 
@@ -398,13 +478,13 @@ public partial class MainWindow
         try { cmbApiProfile.ItemsSource = null; }
         finally { _bindingApiProfiles = false; }
         ClearApiProfileData();
-        SetApiConnectionStatus("Verificando clave con NextDNS…", "TextSecondary");
+        SetApiConnectionStatus(LocalizationManager.Get("Code.Api.VerifyingKeyWithNextDns"), "TextSecondary");
 
         NextDnsApiClient? candidate = null;
         bool connected = false;
         try
         {
-            await StopActivityStreamAsync("Se está verificando otra credencial; el stream se detuvo.");
+            await StopActivityStreamAsync(LocalizationManager.Get("Code.Api.AnotherCredentialStreamStopped"));
             previousClient?.Dispose();
             previousClient = null;
 
@@ -432,17 +512,17 @@ public partial class MainWindow
             connected = true;
 
             string status = choices.Count == 0
-                ? "Clave verificada; no hay perfiles disponibles en esta cuenta."
-                : $"Conectado a NextDNS API · {choices.Count} perfil(es).";
+                ? LocalizationManager.Get("Code.Api.VerifiedNoProfiles")
+                : LocalizationManager.T("Code.Api.ConnectedProfileCount", choices.Count);
             SetApiConnectionStatus(status, "StatusProtected");
         }
         catch (Exception exception)
         {
             candidate?.Dispose();
             string sessionNote = hadPreviousSession
-                ? " La sesión anterior se desconectó antes de verificar esta clave."
-                : " No hay una sesión API activa.";
-            SetApiConnectionStatus("No se pudo verificar la clave: " + exception.Message + sessionNote, "StatusAttention");
+                ? LocalizationManager.Get("Code.Api.PreviousSessionDisconnectedSuffix")
+                : LocalizationManager.Get("Code.Api.NoActiveSessionSuffix");
+            SetApiConnectionStatus(LocalizationManager.T("Code.Api.VerifyKeyFailedWithSession", UiErrorLocalizer.Localize(exception), sessionNote), "StatusAttention");
         }
         finally
         {
@@ -478,7 +558,7 @@ public partial class MainWindow
         ClearApiProfileData();
         try
         {
-            await StopActivityStreamAsync("El perfil cambió; el stream se detuvo.");
+        await StopActivityStreamAsync(LocalizationManager.Get("Code.Api.ProfileChangedStreamStopped"));
         }
         finally
         {
@@ -505,7 +585,7 @@ public partial class MainWindow
         try { domain = NextDnsDomain.Normalize(txtListDomain.Text); }
         catch (ArgumentException exception)
         {
-            SetListsMessage(exception.Message, "StatusAttention");
+            SetListsMessage(UiErrorLocalizer.Localize(exception), "StatusAttention");
             return;
         }
 
@@ -513,7 +593,7 @@ public partial class MainWindow
         {
             await client.AddListEntryAsync(profileId, listType, domain, active: true);
             txtListDomain.Clear();
-            SetListsMessage($"Agregado: {domain}", "StatusProtected");
+            SetListsMessage(LocalizationManager.T("Code.Lists.Added", domain), "StatusProtected");
         });
     }
 
@@ -547,8 +627,8 @@ public partial class MainWindow
             string.IsNullOrWhiteSpace(SelectedApiProfileId) || _apiOperationInProgress) return;
         System.Windows.MessageBoxResult confirm = System.Windows.MessageBox.Show(
             this,
-            $"¿Eliminar {entry.Id} de la lista de NextDNS?",
-            "Eliminar dominio",
+            LocalizationManager.T("Code.Lists.DeleteConfirmation", entry.Id),
+            LocalizationManager.Get("Code.Lists.DeleteTitle"),
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Warning);
         if (confirm != System.Windows.MessageBoxResult.Yes) return;
@@ -557,7 +637,7 @@ public partial class MainWindow
         await ExecuteListWriteAsync(async (client, profileId) =>
         {
             await client.DeleteListEntryAsync(profileId, listType, entry.Id);
-            SetListsMessage($"Eliminado: {entry.Id}", "StatusProtected");
+            SetListsMessage(LocalizationManager.T("Code.Lists.Deleted", entry.Id), "StatusProtected");
         });
     }
 
@@ -569,7 +649,7 @@ public partial class MainWindow
         await ExecuteListWriteAsync(async (client, profileId) =>
         {
             await client.UpdateListEntryAsync(profileId, listType, entry.Id, active: nextState);
-            SetListsMessage(nextState ? $"Activado: {entry.Id}" : $"Desactivado: {entry.Id}", "StatusProtected");
+            SetListsMessage(LocalizationManager.T(nextState ? "Code.Lists.Activated" : "Code.Lists.Deactivated", entry.Id), "StatusProtected");
         });
     }
 
@@ -595,7 +675,7 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            SetListsMessage("La API rechazó la operación: " + exception.Message, "StatusAttention");
+            SetListsMessage(LocalizationManager.T("Code.Lists.WriteFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -632,11 +712,11 @@ public partial class MainWindow
             lblBlockListCount.Text = blocked.Count.ToString(CultureInfo.InvariantCulture);
             pnlAllowedEmpty.Visibility = allowed.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             pnlBlockedEmpty.Visibility = blocked.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-            SetListsMessage($"Listas actualizadas · {allowed.Count} permitidos · {blocked.Count} bloqueados.", "TextSecondary");
+            SetListsMessage(LocalizationManager.T("Code.Lists.Refreshed", allowed.Count, blocked.Count), "TextSecondary");
         }
         catch (Exception exception)
         {
-            SetListsMessage("No se pudieron leer las listas: " + exception.Message, "StatusAttention");
+            SetListsMessage(LocalizationManager.T("Code.Lists.ReadFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -659,8 +739,8 @@ public partial class MainWindow
     {
         var dialog = new Microsoft.Win32.OpenFileDialog
         {
-            Title = "Abrir archivo de dominios",
-            Filter = "Listas NextDNS (*.json;*.txt;*.list)|*.json;*.txt;*.list|Todos los archivos (*.*)|*.*",
+            Title = LocalizationManager.Get("Code.Import.OpenFileTitle"),
+            Filter = LocalizationManager.Get("Code.Import.OpenFileFilter"),
             CheckFileExists = true,
             Multiselect = false
         };
@@ -670,13 +750,13 @@ public partial class MainWindow
         {
             var file = new FileInfo(dialog.FileName);
             if (file.Length > MaximumImportFileBytes)
-                throw new InvalidOperationException("El archivo supera el límite de 2 MB.");
+                throw new InvalidOperationException(LocalizationManager.Get("Code.Import.FileTooLarge"));
             txtBulkDomainImport.Text = await File.ReadAllTextAsync(dialog.FileName, Encoding.UTF8);
-            SetBulkImportResult("Archivo cargado. Revisa la previsualización antes de importar.", "TextSecondary");
+            SetBulkImportResult(LocalizationManager.Get("Code.Import.FileLoaded"), "TextSecondary");
         }
         catch (Exception exception)
         {
-            SetBulkImportResult("No se pudo leer el archivo: " + exception.Message, "StatusAttention");
+            SetBulkImportResult(LocalizationManager.T("Code.Import.ReadFileFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
     }
 
@@ -703,10 +783,11 @@ public partial class MainWindow
         lstImportPreview.ItemsSource = preview.Entries;
         lstImportIssues.ItemsSource = preview.Issues;
         int activeCount = preview.Entries.Count(entry => entry.Active);
-        lblImportPreviewSummary.Text = $"{preview.Entries.Count} válidos · {activeCount} activos · {preview.Entries.Count - activeCount} inactivos · {preview.InvalidCount} inválidos · {preview.DuplicateCount} duplicados.";
+        lblImportPreviewSummary.Text = LocalizationManager.T("Code.Import.PreviewSummary",
+            preview.Entries.Count, activeCount, preview.Entries.Count - activeCount, preview.InvalidCount, preview.DuplicateCount);
         lblImportIssues.Text = preview.Issues.Count == 0
-            ? "No se encontraron errores ni duplicados."
-            : "Revisa las incidencias antes de importar.";
+            ? LocalizationManager.Get("Code.Import.NoIssues")
+            : LocalizationManager.Get("Code.Import.ReviewIssues");
         SetBulkImportResult(string.Empty, "TextSecondary");
         if (preview.Entries.Count == 0)
         {
@@ -726,12 +807,12 @@ public partial class MainWindow
             var existingIds = new HashSet<string>(existing.Select(entry => entry.Id), StringComparer.OrdinalIgnoreCase);
             int alreadyPresent = preview.Entries.Count(entry => existingIds.Contains(entry.Id));
             int newEntries = preview.Entries.Count - alreadyPresent;
-            lblImportPreviewSummary.Text += $" · {newEntries} nuevos · {alreadyPresent} ya existen y conservarán su estado.";
+            lblImportPreviewSummary.Text += LocalizationManager.T("Code.Import.PreviewSummaryExisting", newEntries, alreadyPresent);
             _previewPreflightComplete = true;
         }
         catch (Exception exception)
         {
-            lblImportIssues.Text = "No se pudo comparar con la lista actual: " + exception.Message;
+            lblImportIssues.Text = LocalizationManager.T("Code.Import.CompareFailed", UiErrorLocalizer.Localize(exception));
         }
         finally
         {
@@ -747,8 +828,8 @@ public partial class MainWindow
         {
             DomainImportResult parsed = NextDnsDomain.ParseImport(text);
             IReadOnlyList<string> issues = parsed.InvalidLines
-                .Select(issue => $"Línea {issue.LineNumber}: {issue.Input} — {issue.Reason}")
-                .Concat(parsed.DuplicateLines.Select(issue => $"Línea {issue.LineNumber}: {issue.Input} — {issue.Reason}"))
+                .Select(issue => LocalizationManager.T("Code.Import.LineIssue", issue.LineNumber, issue.Input, UiErrorLocalizer.Localize(issue.Reason)))
+                .Concat(parsed.DuplicateLines.Select(issue => LocalizationManager.T("Code.Import.LineIssue", issue.LineNumber, issue.Input, UiErrorLocalizer.Localize(issue.Reason))))
                 .ToArray();
             return new ApiListImportPreview(
                 parsed.Domains.Select(domain => new NextDnsListEntry { Id = domain, Active = true }).ToArray(),
@@ -767,7 +848,7 @@ public partial class MainWindow
         {
             using JsonDocument document = JsonDocument.Parse(trimmed);
             if (document.RootElement.ValueKind != JsonValueKind.Array)
-                return new ApiListImportPreview(Array.Empty<NextDnsListEntry>(), new[] { "El archivo JSON debe contener un arreglo de entradas." }, 1, 0, true);
+                return new ApiListImportPreview(Array.Empty<NextDnsListEntry>(), new[] { LocalizationManager.Get("Code.Import.JsonArrayRequired") }, 1, 0, true);
 
             int index = 0;
             foreach (JsonElement item in document.RootElement.EnumerateArray())
@@ -779,7 +860,7 @@ public partial class MainWindow
                     activeElement.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                 {
                     invalidCount++;
-                    issuesFromFile.Add($"Entrada {index}: se requiere id (texto) y active (booleano).");
+                    issuesFromFile.Add(LocalizationManager.T("Code.Import.EntryMissingFields", index));
                     continue;
                 }
 
@@ -790,7 +871,7 @@ public partial class MainWindow
                     if (!seen.Add(domain))
                     {
                         duplicateCount++;
-                        issuesFromFile.Add($"Entrada {index}: {domain} está duplicado.");
+                        issuesFromFile.Add(LocalizationManager.T("Code.Import.DuplicateEntry", index, domain));
                         continue;
                     }
                     entries.Add(new NextDnsListEntry { Id = domain, Active = activeElement.GetBoolean() });
@@ -798,13 +879,15 @@ public partial class MainWindow
                 catch (ArgumentException exception)
                 {
                     invalidCount++;
-                    issuesFromFile.Add($"Entrada {index}: {exception.Message}");
+                    issuesFromFile.Add(LocalizationManager.T("Code.Import.EntryInvalid", index, UiErrorLocalizer.Localize(exception)));
                 }
             }
         }
         catch (JsonException exception)
         {
-            return new ApiListImportPreview(Array.Empty<NextDnsListEntry>(), new[] { "JSON no válido: " + exception.Message }, 1, 0, true);
+            long line = (exception.LineNumber ?? 0) + 1;
+            long column = (exception.BytePositionInLine ?? 0) + 1;
+            return new ApiListImportPreview(Array.Empty<NextDnsListEntry>(), new[] { LocalizationManager.T("Code.Import.InvalidJsonAtPosition", line, column) }, 1, 0, true);
         }
 
         return new ApiListImportPreview(entries, issuesFromFile, invalidCount, duplicateCount, ImportedFromStateFile: true);
@@ -818,7 +901,7 @@ public partial class MainWindow
 
     private void ImportListTarget_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (cmbImportListTarget is null) return;
+        if (cmbImportListTarget is null || _refreshingLocalizedChoices) return;
         InvalidateImportPreview();
         UpdateApiControlStates();
     }
@@ -832,7 +915,7 @@ public partial class MainWindow
         _previewPreflightComplete = false;
         if (lstImportPreview is not null) lstImportPreview.ItemsSource = null;
         if (lstImportIssues is not null) lstImportIssues.ItemsSource = null;
-        if (lblImportPreviewSummary is not null) lblImportPreviewSummary.Text = "El contenido o el destino cambió; vuelve a previsualizar.";
+        if (lblImportPreviewSummary is not null) lblImportPreviewSummary.Text = LocalizationManager.Get("Code.Import.PreviewInvalidated");
         if (lblImportIssues is not null) lblImportIssues.Text = string.Empty;
     }
 
@@ -850,7 +933,7 @@ public partial class MainWindow
 
         _apiOperationInProgress = true;
         UpdateApiControlStates();
-        SetBulkImportResult("Importando entradas nuevas sin modificar las existentes…", "TextSecondary");
+        SetBulkImportResult(LocalizationManager.Get("Code.Import.ImportingNewEntries"), "TextSecondary");
         int added = 0;
         int skippedExisting = 0;
         int notAttempted = 0;
@@ -864,7 +947,7 @@ public partial class MainWindow
             for (int index = 0; index < newEntries.Length; index++)
             {
                 NextDnsListEntry entry = newEntries[index];
-                SetBulkImportResult($"Agregando entrada {index + 1} de {newEntries.Length}…", "TextSecondary");
+                SetBulkImportResult(LocalizationManager.T("Code.Import.AddingEntryProgress", index + 1, newEntries.Length), "TextSecondary");
                 try
                 {
                     await client.AddListEntryAsync(profileId, target.Type, entry.Id, active: entry.Active);
@@ -872,7 +955,7 @@ public partial class MainWindow
                 }
                 catch (Exception exception)
                 {
-                    failures.Add($"{entry.Id}: {exception.Message}");
+                    failures.Add(LocalizationManager.T("Code.Import.FailedEntry", entry.Id, UiErrorLocalizer.Localize(exception)));
                     notAttempted = newEntries.Length - index - 1;
                     break;
                 }
@@ -880,21 +963,21 @@ public partial class MainWindow
 
             _previewPreflightComplete = false;
             SetBulkImportResult(
-                $"Agregados: {added} · ya existentes omitidos (estado intacto): {skippedExisting} · fallidos: {failures.Count} · no intentados: {notAttempted}.",
+                LocalizationManager.T("Code.Import.ResultSummary", added, skippedExisting, failures.Count, notAttempted),
                 failures.Count == 0 ? "StatusProtected" : "StatusAttention");
             if (failures.Count > 0)
             {
                 lstImportIssues.ItemsSource = preview.Issues.Concat(failures).ToArray();
-                lblImportIssues.Text = "Las entradas existentes no se modificaron. Revisa el error de la primera entrada fallida.";
+                lblImportIssues.Text = LocalizationManager.Get("Code.Import.ExistingEntriesUnchangedWarning");
             }
             else
             {
-                lblImportIssues.Text = "Importación segura: las entradas existentes conservaron su estado.";
+                lblImportIssues.Text = LocalizationManager.Get("Code.Import.SafeImportExistingEntriesUnchanged");
             }
         }
         catch (Exception exception)
         {
-            SetBulkImportResult("No se pudo completar la importación: " + exception.Message, "StatusAttention");
+            SetBulkImportResult(LocalizationManager.T("Code.Import.CompleteFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -912,18 +995,18 @@ public partial class MainWindow
         IReadOnlyList<NextDnsListEntry> entries = listType == NextDnsListType.Allowlist
             ? _allowedDomains.ToArray()
             : _blockedDomains.ToArray();
-        string listName = listType == NextDnsListType.Allowlist ? "permitida" : "bloqueada";
+        string listName = LocalizationManager.Get(listType == NextDnsListType.Allowlist ? "Code.Lists.Allowlist" : "Code.Lists.Blocklist");
         if (entries.Count == 0)
         {
-            SetListsMessage($"La lista {listName} no tiene dominios para exportar.", "TextSecondary");
+            SetListsMessage(LocalizationManager.T("Code.Export.EmptyList", listName), "TextSecondary");
             return;
         }
 
         var dialog = new Microsoft.Win32.SaveFileDialog
         {
-            Title = "Exportar lista de NextDNS",
+            Title = LocalizationManager.Get("Code.Export.Title"),
             FileName = $"nextdns-{(listType == NextDnsListType.Allowlist ? "allowlist" : "denylist")}.json",
-            Filter = "Lista NextDNS en JSON (*.json)|*.json",
+            Filter = LocalizationManager.Get("Code.Export.Filter"),
             AddExtension = true,
             DefaultExt = ".json",
             OverwritePrompt = true
@@ -934,17 +1017,17 @@ public partial class MainWindow
         {
             var exportData = entries.Select(entry => new { id = entry.Id, active = entry.Active }).ToArray();
             File.WriteAllText(dialog.FileName, JsonSerializer.Serialize(exportData, _prettyJson), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-            SetListsMessage($"Exportados {entries.Count} dominios con su estado activo/inactivo a {dialog.FileName}.", "StatusProtected");
+            SetListsMessage(LocalizationManager.T("Code.Export.Completed", entries.Count, dialog.FileName), "StatusProtected");
         }
         catch (Exception exception)
         {
-            SetListsMessage("No se pudo exportar la lista: " + exception.Message, "StatusAttention");
+            SetListsMessage(LocalizationManager.T("Code.Export.Failed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
     }
 
     private async void BtnRefreshActivity_Click(object sender, RoutedEventArgs e)
     {
-        await StopActivityStreamAsync("Se actualizó la actividad; el stream se detuvo.");
+        await StopActivityStreamAsync(LocalizationManager.Get("Code.Activity.RefreshStoppedStream"));
         await LoadActivityPageAsync(loadMore: false);
     }
 
@@ -954,7 +1037,7 @@ public partial class MainWindow
     {
         if (_activityStreamCancellation is not null)
         {
-            await StopActivityStreamAsync("Stream detenido por el usuario.");
+            await StopActivityStreamAsync(LocalizationManager.Get("Code.Activity.StreamStoppedByUser"));
             return;
         }
         await StartActivityStreamAsync();
@@ -967,7 +1050,7 @@ public partial class MainWindow
         if (client is null || profileId is null || _apiOperationInProgress || _activityStreamCancellation is not null) return;
         if (!string.IsNullOrWhiteSpace(txtActivityFrom.Text) || !string.IsNullOrWhiteSpace(txtActivityTo.Text))
         {
-            SetActivityMessage("Los filtros de fecha no están disponibles en el modo en vivo. Borra Desde y Hasta para continuar.", "StatusAttention");
+            SetActivityMessage(LocalizationManager.Get("Code.Activity.LiveDateFiltersUnavailable"), "StatusAttention");
             return;
         }
 
@@ -982,7 +1065,7 @@ public partial class MainWindow
         try { currentQuery = BuildActivityQuery(); }
         catch (Exception exception)
         {
-            SetActivityMessage(exception.Message, "StatusAttention");
+            SetActivityMessage(UiErrorLocalizer.Localize(exception), "StatusAttention");
             return;
         }
 
@@ -998,7 +1081,7 @@ public partial class MainWindow
         _activityStreamStopMessage = null;
         _activityStreamEventCount = 0;
         UpdateApiControlStates();
-        SetActivityMessage("Conectando con la actividad en vivo…", "TextSecondary");
+        SetActivityMessage(LocalizationManager.Get("Code.Activity.ConnectingLive"), "TextSecondary");
         _activityStreamTask = ReadActivityStreamAsync(client, profileId, streamQuery, cancellation);
     }
 
@@ -1028,7 +1111,7 @@ public partial class MainWindow
                     }
 
                     if (cancellation.IsCancellationRequested) break;
-                    endMessage = "La conexión de actividad en vivo se cerró.";
+                    endMessage = LocalizationManager.Get("Code.Activity.LiveConnectionClosed");
                     endForeground = "StatusAttention";
                 }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
@@ -1037,12 +1120,12 @@ public partial class MainWindow
                 }
                 catch (Exception exception) when (IsRetryableActivityStreamFailure(exception))
                 {
-                    endMessage = "Se perdió la conexión de actividad en vivo: " + exception.Message;
+                    endMessage = LocalizationManager.T("Code.Activity.LiveConnectionLost", UiErrorLocalizer.Localize(exception));
                     endForeground = "StatusAttention";
                 }
                 catch (Exception exception)
                 {
-                    endMessage = "Se interrumpió el stream de actividad: " + exception.Message;
+                    endMessage = LocalizationManager.T("Code.Activity.StreamInterrupted", UiErrorLocalizer.Localize(exception));
                     endForeground = "StatusAttention";
                     break;
                 }
@@ -1051,7 +1134,7 @@ public partial class MainWindow
 
                 TimeSpan delay = GetActivityStreamReconnectDelay(retryAttempt);
                 retryAttempt = Math.Min(retryAttempt + 1, 5);
-                string reconnectMessage = $"{endMessage} Reintentando en {delay.TotalSeconds:0} s.";
+                string reconnectMessage = LocalizationManager.T("Code.Activity.Reconnecting", endMessage, delay.TotalSeconds);
                 await Dispatcher.InvokeAsync(() =>
                 {
                     if (ReferenceEquals(_activityStreamCancellation, cancellation) &&
@@ -1066,14 +1149,14 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            endMessage = "Se interrumpió el stream de actividad: " + exception.Message;
+            endMessage = LocalizationManager.T("Code.Activity.StreamInterrupted", UiErrorLocalizer.Localize(exception));
             endForeground = "StatusAttention";
         }
         finally
         {
             if (cancellation.IsCancellationRequested)
             {
-                endMessage = _activityStreamStopMessage ?? "Stream detenido.";
+                endMessage = _activityStreamStopMessage ?? LocalizationManager.Get("Code.Activity.StreamStopped");
                 endForeground = "TextSecondary";
             }
 
@@ -1147,7 +1230,7 @@ public partial class MainWindow
             !_activityDevices.ContainsKey(streamEvent.Entry.Device.Id))
             MergeActivityDevices(new[] { streamEvent.Entry });
         _activityStreamEventCount++;
-        SetActivityMessage($"En vivo · {_activityStreamEventCount} consultas nuevas · {_dnsActivity.Count} en pantalla.", "StatusProtected");
+        SetActivityMessage(LocalizationManager.T("Code.Activity.LiveCount", _activityStreamEventCount, _dnsActivity.Count), "StatusProtected");
     }
 
     private async Task StopActivityStreamAsync(string message)
@@ -1182,7 +1265,7 @@ public partial class MainWindow
             _activityAutoLoadPending = false;
             _activityAutoLoadIssuedForVisit = false;
             CancelActivityPageLoad();
-            CancelActivityStream("El modo en vivo se pausó al salir de Actividad.");
+            CancelActivityStream(LocalizationManager.Get("Code.Activity.LivePausedOnLeave"));
             return;
         }
 
@@ -1240,16 +1323,16 @@ public partial class MainWindow
     {
         if (lblActivityEmptyDescription is null) return;
         lblActivityEmptyDescription.Text = _nextDnsApiClient is null
-            ? "Conecta la API para consultar la actividad DNS."
+            ? LocalizationManager.Get("Main.Ui.Lists.ConnectApi")
             : SelectedApiProfileId is null
-                ? "Selecciona un perfil NextDNS para consultar su actividad."
+                ? LocalizationManager.Get("Code.Activity.SelectProfileEmpty")
                 : _activityNeedsApply
-                    ? "Pulsa Aplicar filtros para consultar los criterios elegidos."
+                    ? LocalizationManager.Get("Code.Activity.ApplyFiltersEmpty")
                     : _activityLoadInProgress || _activityAutoLoadPending
-                        ? "Cargando consultas del perfil…"
+                        ? LocalizationManager.Get("Code.Activity.LoadingProfileQueries")
                         : _activityQuery is not null
-                            ? "No hay consultas para los filtros actuales."
-                            : "Las consultas DNS del perfil aparecerán aquí.";
+                            ? LocalizationManager.Get("Code.Activity.NoQueriesForFilters")
+                            : LocalizationManager.Get("Code.Activity.QueriesAppearHere");
     }
 
     private async Task LoadActivityPageAsync(bool loadMore)
@@ -1273,7 +1356,7 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            SetActivityMessage(exception.Message, "StatusAttention");
+            SetActivityMessage(UiErrorLocalizer.Localize(exception), "StatusAttention");
             return;
         }
 
@@ -1346,12 +1429,14 @@ public partial class MainWindow
             MergeActivityDevices(page.Items, query.Device);
             pnlActivityEmpty.Visibility = _dnsActivity.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
             string activityMessage = _dnsActivity.Count == 0
-                ? "No se encontraron consultas con estos filtros."
+                ? LocalizationManager.Get("Code.Activity.NoQueriesFound")
                 : _dnsActivity.Count >= MaximumActivityItems
-                    ? $"Mostrando un máximo de {MaximumActivityItems} consultas. Actualiza para ver las más recientes."
-                    : $"Mostrando {_dnsActivity.Count} consultas" + (string.IsNullOrEmpty(_activityCursor) ? "." : "; hay más resultados.");
+                    ? LocalizationManager.T("Code.Activity.MaximumShown", MaximumActivityItems)
+                    : LocalizationManager.T(string.IsNullOrEmpty(_activityCursor)
+                        ? "Code.Activity.ShowingCountNoMore"
+                        : "Code.Activity.ShowingCountHasMore", _dnsActivity.Count);
             if (analyticsDevicesError is not null)
-                activityMessage += " No se pudo actualizar el catálogo de dispositivos: " + analyticsDevicesError.Message;
+                activityMessage += LocalizationManager.T("Code.Activity.DeviceCatalogUpdateFailed", UiErrorLocalizer.Localize(analyticsDevicesError));
             SetActivityMessage(activityMessage, analyticsDevicesError is null ? "TextSecondary" : "StatusAttention");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -1360,7 +1445,7 @@ public partial class MainWindow
         }
         catch (Exception exception)
         {
-            SetActivityMessage("No se pudieron cargar los registros: " + exception.Message, "StatusAttention");
+            SetActivityMessage(LocalizationManager.T("Code.Activity.LoadLogsFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -1375,16 +1460,16 @@ public partial class MainWindow
 
     private NextDnsLogsQuery BuildActivityQuery()
     {
-        string? from = NormalizeLogDate(txtActivityFrom.Text, "Desde");
-        string? to = NormalizeLogDate(txtActivityTo.Text, "Hasta");
+        string? from = NormalizeLogDate(txtActivityFrom.Text, LocalizationManager.Get("Code.Activity.DateFrom"));
+        string? to = NormalizeLogDate(txtActivityTo.Text, LocalizationManager.Get("Code.Activity.DateTo"));
         if (from is not null && to is not null &&
             DateTimeOffset.Parse(from, CultureInfo.InvariantCulture) > DateTimeOffset.Parse(to, CultureInfo.InvariantCulture))
-            throw new ArgumentException("La fecha Desde debe ser anterior o igual a Hasta.");
+            throw new ArgumentException(LocalizationManager.Get("Code.Activity.QueryRangeInvalid"));
 
         ActivityDeviceChoice? device = cmbActivityDevice.SelectedItem as ActivityDeviceChoice;
         ActivityStatusChoice? status = cmbActivityStatus.SelectedItem as ActivityStatusChoice;
         string search = txtActivitySearch.Text.Trim();
-        if (search.Length > 512) throw new ArgumentException("La búsqueda no puede superar 512 caracteres.");
+        if (search.Length > 512) throw new ArgumentException(LocalizationManager.Get("Code.Activity.SearchTooLong"));
         return new NextDnsLogsQuery
         {
             From = from,
@@ -1403,7 +1488,7 @@ public partial class MainWindow
         if (value.Length == 0) return null;
         if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out DateTimeOffset parsed))
-            throw new ArgumentException($"{fieldName}: usa una fecha ISO 8601 en UTC, por ejemplo 2026-11-25T00:00:00Z.");
+            throw new ArgumentException(LocalizationManager.T("Code.Activity.InvalidUtcDate", fieldName));
         return parsed.ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture);
     }
 
@@ -1443,8 +1528,8 @@ public partial class MainWindow
 
     private void RebuildActivityDeviceChoices(string? selectedId, string? selectedName)
     {
-        var options = new List<ActivityDeviceChoice> { new("Todos los dispositivos", null) };
-        options.Add(new ActivityDeviceChoice("Dispositivo no identificado", "__UNIDENTIFIED__"));
+        var options = new List<ActivityDeviceChoice> { new(LocalizationManager.Get("Code.Activity.AllDevices"), null) };
+        options.Add(new ActivityDeviceChoice(LocalizationManager.Get("Main.Ui.Common.UnknownDevice"), "__UNIDENTIFIED__"));
         options.AddRange(_activityDevices.OrderBy(pair => pair.Value, StringComparer.CurrentCultureIgnoreCase)
             .Select(pair => new ActivityDeviceChoice(pair.Value, pair.Key)));
         if (!string.IsNullOrWhiteSpace(selectedId) &&
@@ -1464,9 +1549,9 @@ public partial class MainWindow
 
     private async void ActivityFilter_Changed(object sender, RoutedEventArgs e)
     {
-        if (_bindingActivityDevices || _bindingActivityFilters || !_apiUiInitialized) return;
+        if (_bindingActivityDevices || _bindingActivityFilters || _refreshingLocalizedChoices || !_apiUiInitialized) return;
         CancelActivityPageLoad();
-        await StopActivityStreamAsync("Los filtros cambiaron; el stream se detuvo.");
+        await StopActivityStreamAsync(LocalizationManager.Get("Code.Activity.FiltersChangedStreamStopped"));
         _activityQuery = null;
         _activityCursor = null;
         _activityStreamId = null;
@@ -1476,7 +1561,7 @@ public partial class MainWindow
         _recentStreamEventIdSet.Clear();
         _dnsActivity.Clear();
         pnlActivityEmpty.Visibility = Visibility.Visible;
-        SetActivityMessage("Filtros cambiados. Pulsa Aplicar para consultar de nuevo.", "TextSecondary");
+        SetActivityMessage(LocalizationManager.Get("Code.Activity.FiltersChangedApplyAgain"), "TextSecondary");
         UpdateApiControlStates();
     }
 
@@ -1490,7 +1575,7 @@ public partial class MainWindow
 
         _apiOperationInProgress = true;
         UpdateApiControlStates();
-        SetApiSettingsStatus("Leyendo la configuración del perfil…", "TextSecondary");
+        SetApiSettingsStatus(LocalizationManager.Get("Code.ApiSettings.Reading"), "TextSecondary");
         try
         {
             Task<LogsSettingData> logsTask = client.GetSettingAsync<LogsSettingData>(profileId, NextDnsSetting.Logs);
@@ -1515,13 +1600,13 @@ public partial class MainWindow
             chkApiBlockPageEnabled.IsThreeState = !_originalBlockPageEnabled.HasValue;
             _apiSettingsLoaded = true;
             pnlApiSettingsValues.Visibility = Visibility.Visible;
-            SetApiSettingsStatus("Configuración leída desde el perfil seleccionado.", "TextSecondary");
+            SetApiSettingsStatus(LocalizationManager.Get("Code.ApiSettings.Read"), "TextSecondary");
         }
         catch (Exception exception)
         {
             _apiSettingsLoaded = false;
             pnlApiSettingsValues.Visibility = Visibility.Collapsed;
-            SetApiSettingsStatus("No se pudo leer la configuración: " + exception.Message, "StatusAttention");
+            SetApiSettingsStatus(LocalizationManager.T("Code.ApiSettings.ReadFailed", UiErrorLocalizer.Localize(exception)), "StatusAttention");
         }
         finally
         {
@@ -1551,18 +1636,26 @@ public partial class MainWindow
 
         var changes = new List<string>();
         if (HasChanged(_originalLogsEnabled, chkApiLogsEnabled.IsChecked))
-            changes.Add(chkApiLogsEnabled.IsChecked == true ? "activar el guardado de registros DNS" : "desactivar el guardado de registros DNS");
+            changes.Add(LocalizationManager.Get(chkApiLogsEnabled.IsChecked == true
+                ? "Code.ApiSettings.EnableDnsLogs"
+                : "Code.ApiSettings.DisableDnsLogs"));
         if (HasChanged(_originalDropIp, chkApiDropIp.IsChecked))
-            changes.Add(chkApiDropIp.IsChecked == true ? "dejar de guardar las IP de cliente" : "guardar las IP de cliente");
+            changes.Add(LocalizationManager.Get(chkApiDropIp.IsChecked == true
+                ? "Code.ApiSettings.StopSavingClientIps"
+                : "Code.ApiSettings.SaveClientIps"));
         if (HasChanged(_originalDropDomain, chkApiDropDomain.IsChecked))
-            changes.Add(chkApiDropDomain.IsChecked == true ? "dejar de guardar los dominios consultados" : "guardar los dominios consultados");
+            changes.Add(LocalizationManager.Get(chkApiDropDomain.IsChecked == true
+                ? "Code.ApiSettings.StopSavingQueriedDomains"
+                : "Code.ApiSettings.SaveQueriedDomains"));
         if (patchBlockPage)
-            changes.Add(chkApiBlockPageEnabled.IsChecked == true ? "mostrar la página de bloqueo" : "ocultar la página de bloqueo");
+            changes.Add(LocalizationManager.Get(chkApiBlockPageEnabled.IsChecked == true
+                ? "Code.ApiSettings.ShowBlockPage"
+                : "Code.ApiSettings.HideBlockPage"));
 
         System.Windows.MessageBoxResult confirmation = System.Windows.MessageBox.Show(
             this,
-            "Se guardarán estos cambios en NextDNS y afectarán a los dispositivos que usan este perfil:\n\n• " + string.Join("\n• ", changes),
-            "Aplicar configuración del perfil",
+            LocalizationManager.T("Code.ApiSettings.Confirmation", string.Join("\n• ", changes)),
+            LocalizationManager.Get("Code.ApiSettings.ConfirmationTitle"),
             System.Windows.MessageBoxButton.YesNo,
             System.Windows.MessageBoxImage.Question);
         if (confirmation != System.Windows.MessageBoxResult.Yes) return;
@@ -1583,13 +1676,13 @@ public partial class MainWindow
                     new { enabled = chkApiBlockPageEnabled.IsChecked!.Value });
                 applied++;
             }
-            SetApiSettingsStatus("La configuración se guardó en NextDNS.", "StatusProtected");
+            SetApiSettingsStatus(LocalizationManager.Get("Code.ApiSettings.Saved"), "StatusProtected");
         }
         catch (Exception exception)
         {
             string message = applied > 0
-                ? "Se guardaron algunos cambios; revisa la configuración actual. " + exception.Message
-                : "No se pudo guardar la configuración: " + exception.Message;
+                ? LocalizationManager.T("Code.ApiSettings.PartiallySaved", UiErrorLocalizer.Localize(exception))
+                : LocalizationManager.T("Code.ApiSettings.SaveFailed", UiErrorLocalizer.Localize(exception));
             SetApiSettingsStatus(message, "StatusAttention");
         }
         finally
@@ -1687,7 +1780,9 @@ public partial class MainWindow
 
     private void SetApiKeyVisibilityLabel()
     {
-        string description = _apiKeyVisible ? "Ocultar clave API" : "Mostrar clave API";
+        string description = LocalizationManager.Get(_apiKeyVisible
+            ? "Code.Api.HideKey"
+            : "Main.Ui.Settings.ShowApiKey");
         ApiKeyVisibilityGlyph.Text = _apiKeyVisible ? "\uE8AC" : "\uE890";
         btnToggleApiKeyVisibility.ToolTip = description;
         System.Windows.Automation.AutomationProperties.SetName(btnToggleApiKeyVisibility, description);
@@ -1770,7 +1865,9 @@ public partial class MainWindow
         txtActivityFrom.IsEnabled = !busy && hasProfile;
         txtActivityTo.IsEnabled = !busy && hasProfile;
         btnToggleActivityStream.IsEnabled = !busy && hasProfile;
-        btnToggleActivityStream.Content = _activityStreamCancellation is not null ? "Detener en vivo" : "Ver en vivo";
+        btnToggleActivityStream.Content = LocalizationManager.Get(_activityStreamCancellation is not null
+            ? "Code.Activity.StopLive"
+            : "Main.Ui.Activity.Live");
         btnRefreshActivity.IsEnabled = !busy && hasProfile && _activityStreamCancellation is null;
         btnLoadMoreActivity.IsEnabled = !busy && hasProfile && _activityStreamCancellation is null &&
             _dnsActivity.Count < MaximumActivityItems && !string.IsNullOrEmpty(_activityCursor);
@@ -1798,7 +1895,7 @@ public partial class MainWindow
     private void ClearApiProfileData()
     {
         CancelActivityPageLoad();
-        CancelActivityStream("Se limpió la sesión del perfil; el stream se detuvo.");
+        CancelActivityStream(LocalizationManager.Get("Code.Api.ProfileSessionClearedStreamStopped"));
         _allowedDomains.Clear();
         _blockedDomains.Clear();
         _dnsActivity.Clear();
@@ -1825,7 +1922,7 @@ public partial class MainWindow
         _bindingActivityDevices = true;
         try
         {
-            cmbActivityDevice.ItemsSource = new[] { new ActivityDeviceChoice("Todos los dispositivos", null) };
+            cmbActivityDevice.ItemsSource = new[] { new ActivityDeviceChoice(LocalizationManager.Get("Code.Activity.AllDevices"), null) };
             cmbActivityDevice.SelectedIndex = 0;
             cmbActivityStatus.SelectedIndex = 0;
             txtActivitySearch.Clear();
@@ -1845,11 +1942,13 @@ public partial class MainWindow
             _bindingActivityDevices = false;
             _bindingActivityFilters = false;
         }
-        SetListsMessage(_nextDnsApiClient is null ? "Conecta la API para consultar y editar estas listas." : "Selecciona un perfil NextDNS.", "TextSecondary");
+        SetListsMessage(LocalizationManager.Get(_nextDnsApiClient is null
+            ? "Main.Ui.Lists.ConnectApi"
+            : "Code.Lists.SelectProfile"), "TextSecondary");
         SetActivityMessage(string.Empty, "TextSecondary");
         InvalidateImportPreview();
         pnlApiSettingsValues.Visibility = Visibility.Collapsed;
-        SetApiSettingsStatus("La configuración aún no se consultó.", "TextSecondary");
+        SetApiSettingsStatus(LocalizationManager.Get("Code.ApiSettings.NotReadYet"), "TextSecondary");
         UpdateApiControlStates();
     }
 
@@ -1898,7 +1997,7 @@ public partial class MainWindow
         Task? streamTask = _activityStreamTask;
         if (cancellation is not null)
         {
-            _activityStreamStopMessage = "La ventana se cerró; el stream se detuvo.";
+            _activityStreamStopMessage = LocalizationManager.Get("Code.Api.WindowClosedStreamStopped");
             cancellation.Cancel();
             if (streamTask is not null)
             {
