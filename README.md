@@ -6,9 +6,11 @@
 
 > Proyecto independiente de NextDNS, desarrollado para Windows. Requiere una cuenta de NextDNS para las funciones de API.
 
-![Maqueta de Inicio en modos oscuro y claro, con datos ficticios](docs/assets/readme-inicio.svg)
+![Captura real de Inicio en modo oscuro](docs/screenshots/manager-dark.png)
 
-*Las imágenes son ilustraciones de la interfaz y usan datos ficticios; la apariencia puede variar según la versión y la configuración.*
+![Captura real de Inicio en modo claro](docs/screenshots/manager-light.png)
+
+*Capturas generadas desde la interfaz WPF con perfiles y datos de demostración. La transparencia del escritorio puede verse diferente en una captura.*
 
 ## ¿Qué permite hacer?
 
@@ -19,8 +21,6 @@
 - Consultar actividad por perfil y dispositivo, filtrar resultados y fechas, mostrar bloqueados y activar el modo en vivo. La disponibilidad depende de la configuración y la API de NextDNS.
 - Leer y modificar los ajustes de registro y página de bloqueo disponibles en la API.
 - Elegir modo claro, oscuro o automático; consultar diagnósticos y buscar actualizaciones desde la aplicación.
-
-![Maqueta de listas y actividad con datos ficticios](docs/assets/readme-remoto.svg)
 
 ## Instalación
 

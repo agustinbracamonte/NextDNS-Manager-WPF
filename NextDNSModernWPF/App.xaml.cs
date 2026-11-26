@@ -16,6 +16,21 @@ namespace NextDNSModernWPF
         protected override void OnStartup(StartupEventArgs e)
         {
             base.OnStartup(e);
+
+            if (e.Args.Length > 0 && string.Equals(e.Args[0], "--capture-demo", StringComparison.Ordinal))
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                if (e.Args.Length != 2 || string.IsNullOrWhiteSpace(e.Args[1]))
+                {
+                    Environment.ExitCode = 2;
+                    Shutdown(2);
+                    return;
+                }
+
+                _ = CaptureDemoScreenshotsAsync(e.Args[1]);
+                return;
+            }
+
             UpdateHelperCopy.CleanupStaleCopies();
             if (UpdateLaunchCoordinator.IsHelperInvocation(e.Args))
             {
@@ -64,6 +79,21 @@ namespace NextDNSModernWPF
                     "NextDNS Manager",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
+                Shutdown(1);
+            }
+        }
+
+        private async Task CaptureDemoScreenshotsAsync(string outputDirectory)
+        {
+            try
+            {
+                await DemoCaptureRunner.CaptureAsync(outputDirectory);
+                Shutdown(0);
+            }
+            catch (Exception exception)
+            {
+                System.Diagnostics.Debug.WriteLine("No se pudieron generar las capturas de demostración: " + exception);
+                Environment.ExitCode = 1;
                 Shutdown(1);
             }
         }

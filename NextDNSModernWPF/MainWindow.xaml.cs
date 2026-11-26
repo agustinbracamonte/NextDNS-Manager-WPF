@@ -27,6 +27,7 @@ namespace NextDNSModernWPF
     public partial class MainWindow : Window
     {
         private List<Profile> profiles = new List<Profile>();
+        private readonly bool _demoCaptureMode;
 
         // CORRECCIÓN 1: Guardar configuración en %AppData% para que no ensucie la carpeta del programa
         private string appDataFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "NextDNSManager");
@@ -65,10 +66,24 @@ namespace NextDNSModernWPF
         private bool _allowClose;
         private bool _trayDisposed;
 
-        public MainWindow()
+        public MainWindow() : this(demoCaptureMode: false, ThemeVariant.Dark)
         {
-            ThemeManager.Initialize(System.Windows.Application.Current);
+        }
+
+        internal MainWindow(bool demoCaptureMode, ThemeVariant demoTheme)
+        {
+            _demoCaptureMode = demoCaptureMode;
+            if (!demoCaptureMode)
+                ThemeManager.Initialize(System.Windows.Application.Current);
+
             InitializeComponent();
+
+            if (demoCaptureMode)
+            {
+                InitializeDemoCapture(demoTheme);
+                return;
+            }
+
             InitializeNetworkInformation();
             cmbTheme.SelectionChanged += CmbTheme_SelectionChanged;
             ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
@@ -104,6 +119,55 @@ namespace NextDNSModernWPF
                 DisposeTrayIcon();
                 throw;
             }
+        }
+
+        private void InitializeDemoCapture(ThemeVariant theme)
+        {
+            // These values are intentionally synthetic. This branch avoids the
+            // normal profile, API-key, network, broker, registry, and tray setup.
+            profiles = new List<Profile>
+            {
+                new Profile { Name = "Personal (demo)", ID = "A1B2C3" },
+                new Profile { Name = "Trabajo (demo)", ID = "D4E5F6" }
+            };
+            activeProfileId = "A1B2C3";
+            hasBrokerStatus = true;
+            isProtected = true;
+
+            cmbProfiles.ItemsSource = profiles;
+            cmbProfiles.SelectedIndex = 0;
+            cmbTheme.SelectedItem = cmbTheme.Items
+                .OfType<ComboBoxItem>()
+                .FirstOrDefault(item => string.Equals(item.Tag?.ToString(), theme.ToString(), StringComparison.OrdinalIgnoreCase));
+
+            var demoDnsSummary = new TextBlock
+            {
+                Text = "45.90.28.0, 45.90.30.0 (datos de demostración)",
+                TextWrapping = TextWrapping.Wrap,
+                FontSize = 13
+            };
+            demoDnsSummary.SetResourceReference(TextBlock.ForegroundProperty, "TextPrimary");
+            HomeNetworkHost.Children.Add(demoDnsSummary);
+
+            var demoPauseButton = new System.Windows.Controls.Button { Content = "Pausar", MinWidth = 150, Height = 46 };
+            demoPauseButton.SetResourceReference(FrameworkElement.StyleProperty, "QuietActionButton");
+            HomePauseHost.Children.Add(demoPauseButton);
+
+            // The capture window is non-interactive, so no XAML action can run.
+            IsHitTestVisible = false;
+            Focusable = false;
+            ShowInTaskbar = false;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            UpdateUI();
+        }
+
+        internal void CloseAfterDemoCapture()
+        {
+            if (!_demoCaptureMode)
+                throw new InvalidOperationException("Solo la ventana de captura puede cerrarse por este método.");
+
+            _allowClose = true;
+            Close();
         }
 
         private void InitializeTrayIcon()

@@ -1,0 +1,35 @@
+name: Generar capturas de la interfaz
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Preparar el motor verificado
+        shell: pwsh
+        run: ./scripts/Prepare-NextDNSCli.ps1
+      - name: Generar capturas con datos ficticios
+        shell: pwsh
+        run: |
+          $outputDir = Join-Path $env:RUNNER_TEMP 'nextdns-screenshots'
+          dotnet run --project NextDNSModernWPF/NextDNSModernWPF.csproj -c Release -- --capture-demo $outputDir
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudieron generar las capturas.' }
+          foreach ($name in @('manager-light.png', 'manager-dark.png')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $outputDir $name))) { throw "Falta la captura $name." }
+          }
+      - name: Guardar imágenes para revisión
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-nextdns-demo
+          path: ${{ runner.temp }}/nextdns-screenshots/*.png
+          if-no-files-found: error
