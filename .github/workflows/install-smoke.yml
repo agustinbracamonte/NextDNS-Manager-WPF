@@ -78,6 +78,21 @@ jobs:
             & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
             if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio se detuvo durante el intento rechazado.' }
           } finally { $mutex.Dispose() }
+      - name: Detectar archivo alterado y recuperarlo mediante reparación
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
+          $runtimeConfig = Join-Path $installDir 'NextDNSModernWPF.runtimeconfig.json'
+          Add-Content -LiteralPath $runtimeConfig -Value ' '
+          $detected = $false
+          try { & ./scripts/Test-InstallLayout.ps1 -Directory $installDir } catch { $detected = $true }
+          if (-not $detected) { throw 'La verificación no detectó el archivo alterado.' }
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "No se pudo reparar el archivo alterado: $($process.ExitCode)." }
+          & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
+          if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar el archivo.' }
       - name: Reinstalar con cada idioma del asistente
         if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.os == 'windows-2022' }}
         shell: pwsh
