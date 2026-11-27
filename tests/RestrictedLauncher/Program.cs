@@ -33,9 +33,23 @@ internal static class Program
             return 2;
         }
 
+        if (args.Length == 4 && string.Equals(args[1], "--current-user", StringComparison.Ordinal) &&
+            string.Equals(args[2], "--dotnet", StringComparison.Ordinal))
+        {
+            try
+            {
+                return RunStatusAsCurrentUser(args[0], args[3]);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine("FAIL: " + ex.Message);
+                return 1;
+            }
+        }
+
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("Usage: RestrictedLauncher <BrokerProbe.exe|BrokerProbe.dll>");
+            Console.Error.WriteLine("Usage: RestrictedLauncher <BrokerProbe.exe|BrokerProbe.dll> | RestrictedLauncher <BrokerProbe.exe|BrokerProbe.dll> --current-user --dotnet <dotnet.exe>");
             return 2;
         }
 
@@ -133,6 +147,90 @@ internal static class Program
         return 0;
     }
 
+    private static int RunStatusAsCurrentUser(string probePath, string dotnetPath)
+    {
+        string fullProbePath = Path.GetFullPath(probePath);
+        if (!File.Exists(fullProbePath))
+            throw new FileNotFoundException("The BrokerProbe executable or assembly was not found.", fullProbePath);
+        string fullDotnetPath = Path.GetFullPath(dotnetPath);
+        if (!File.Exists(fullDotnetPath))
+            throw new FileNotFoundException("The specified .NET host was not found.", fullDotnetPath);
+        ProbeCommand probeCommand = ResolveProbeCommand(fullProbePath, fullDotnetPath);
+
+        using SafeTokenHandle currentToken = OpenCurrentProcessToken(TokenQuery);
+        string expectedUserSid = GetTokenUserSid(currentToken);
+        uint expectedSessionId = GetTokenSessionId(currentToken);
+        if (expectedSessionId != checked((uint)Process.GetCurrentProcess().SessionId))
+            throw new InvalidOperationException("The test-user token session does not match the current process session.");
+
+        using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+        {
+            if (new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+                throw new InvalidOperationException("The current-user launcher must run as a standard, non-administrator account.");
+        }
+
+        using SafeLocalMemoryHandle administratorsSid = ConvertStringSid(AdministratorsSid);
+        ValidateRestrictedToken(currentToken, expectedUserSid, expectedSessionId, administratorsSid);
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = probeCommand.ExecutablePath,
+            WorkingDirectory = Directory.GetCurrentDirectory(),
+            UseShellExecute = false,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+        startInfo.ArgumentList.Add(probeCommand.AssemblyPath);
+        startInfo.ArgumentList.Add(probeCommand.Arguments);
+
+        using Process probeProcess = new() { StartInfo = startInfo };
+        if (!probeProcess.Start())
+            throw new InvalidOperationException("BrokerProbe did not start under the standard-user token.");
+
+        Task<string> outputTask = probeProcess.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = probeProcess.StandardError.ReadToEndAsync();
+        probeProcess.StandardInput.Close();
+        try
+        {
+            using SafeTokenHandle childToken = OpenProcessToken(probeProcess.Handle, TokenQuery);
+            ValidateRestrictedToken(childToken, expectedUserSid, expectedSessionId, administratorsSid);
+
+            if (!probeProcess.WaitForExit(120_000))
+            {
+                probeProcess.Kill(entireProcessTree: true);
+                _ = probeProcess.WaitForExit(5_000);
+                throw new TimeoutException("BrokerProbe --status exceeded the 120-second launcher timeout.");
+            }
+        }
+        catch
+        {
+            if (!probeProcess.HasExited)
+            {
+                try { probeProcess.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
+                _ = probeProcess.WaitForExit(5_000);
+            }
+            throw;
+        }
+
+        string output = outputTask.GetAwaiter().GetResult();
+        string error = errorTask.GetAwaiter().GetResult();
+        Console.WriteLine($"Identity check passed: standard-user SID {expectedUserSid}, same session, Administrators disabled.");
+        Console.WriteLine($"Probe host: {probeCommand.ExecutablePath}");
+        Console.Write(output);
+        if (!string.IsNullOrWhiteSpace(error)) Console.Error.Write(error);
+
+        if (probeProcess.ExitCode != 0)
+            throw new InvalidOperationException($"BrokerProbe --status exited with code {probeProcess.ExitCode}.");
+        if (!HasOutputLine(output, "Admin: false"))
+            throw new InvalidOperationException("BrokerProbe did not confirm that its token is non-elevated.");
+        if (!HasOutputLine(output, "Success: true"))
+            throw new InvalidOperationException("BrokerProbe did not confirm a successful broker status response.");
+
+        Console.WriteLine("PASS: Broker status was read by a standard user in its original logon token.");
+        return 0;
+    }
+
     private static SafeTokenHandle OpenCurrentProcessToken(uint desiredAccess)
     {
         if (!NativeMethods.OpenProcessToken(NativeMethods.GetCurrentProcess(), desiredAccess, out SafeTokenHandle token))
@@ -159,7 +257,7 @@ internal static class Program
         return restrictedToken;
     }
 
-    private static ProbeCommand ResolveProbeCommand(string probePath)
+    private static ProbeCommand ResolveProbeCommand(string probePath, string? dotnetPath = null)
     {
         string assemblyPath = Path.GetExtension(probePath).Equals(".dll", StringComparison.OrdinalIgnoreCase)
             ? probePath
@@ -167,7 +265,7 @@ internal static class Program
         if (!File.Exists(assemblyPath))
             throw new FileNotFoundException("BrokerProbe.dll was not found next to its launcher.", assemblyPath);
 
-        return new ProbeCommand(FindDotNetExecutable(), assemblyPath, "--status");
+        return new ProbeCommand(dotnetPath ?? FindDotNetExecutable(), assemblyPath, "--status");
     }
 
     private static string FindDotNetExecutable()

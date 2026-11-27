@@ -48,19 +48,15 @@ jobs:
           $service = Get-Service NextDNSManagerBroker -ErrorAction Stop
           if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
           if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.2.0') { throw 'Versión instalada incorrecta.' }
-      - name: Consultar estado mediante cliente normal
+      - name: Consultar estado desde cuenta local estándar
         id: status
         shell: pwsh
         run: |
           dotnet build tests/BrokerProbe/BrokerProbe.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar BrokerProbe.' }
-          $launcherOutput = & dotnet run --project tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release -- tests/BrokerProbe/bin/Release/net10.0-windows/BrokerProbe.exe 2>&1
-          $launcherExitCode = $LASTEXITCODE
-          $launcherOutput | Write-Output
-          if ($launcherExitCode -eq -1073741502 -or ($launcherOutput -join "`n") -match '(?i)(0xC0000142|3221225794|-1073741502)') {
-            throw 'RestrictedLauncher terminó con STATUS_DLL_INIT_FAILED (0xC0000142); la consulta con token restringido no llegó a ejecutarse y queda fallida.'
-          }
-          if ($launcherExitCode -ne 0) { throw "El cliente no pudo consultar el servicio instalado (exit code $launcherExitCode)." }
+          dotnet build tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar RestrictedLauncher.' }
+          ./scripts/Test-RestrictedStatus.ps1
       - name: Reparar y volver a verificar
         if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
