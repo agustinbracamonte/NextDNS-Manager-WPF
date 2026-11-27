@@ -40,14 +40,14 @@ jobs:
         id: install
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.3-Setup-x64.exe'
           $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "El instalador terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
           $service = Get-Service NextDNSManagerBroker -ErrorAction Stop
           if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
-          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.2.0') { throw 'Versión instalada incorrecta.' }
+          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.3.0') { throw 'Versión instalada incorrecta.' }
       - name: Consultar estado desde cuenta local estándar
         id: status
         shell: pwsh
@@ -61,7 +61,7 @@ jobs:
         if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.3-Setup-x64.exe'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "La reparación terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
@@ -72,7 +72,7 @@ jobs:
         run: |
           $mutex = [System.Threading.Mutex]::new($false, 'NextDNSManagerWPF-Running')
           try {
-            $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
+            $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.3-Setup-x64.exe'
             $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
             if ($process.ExitCode -eq 0) { throw 'El instalador no rechazó la instancia abierta.' }
             & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
@@ -88,7 +88,7 @@ jobs:
           $detected = $false
           try { & ./scripts/Test-InstallLayout.ps1 -Directory $installDir } catch { $detected = $true }
           if (-not $detected) { throw 'La verificación no detectó el archivo alterado.' }
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.3-Setup-x64.exe'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "No se pudo reparar el archivo alterado: $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
@@ -97,7 +97,7 @@ jobs:
         if: ${{ always() && !cancelled() && steps.install.outcome == 'success' && matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.3-Setup-x64.exe'
           foreach ($language in @('en', 'es', 'fr', 'pt', 'de')) {
             $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LANG=$language" -Wait -PassThru
             if ($process.ExitCode -ne 0) { throw "La reparación con idioma $language terminó con código $($process.ExitCode)." }

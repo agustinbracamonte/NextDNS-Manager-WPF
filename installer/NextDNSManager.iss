@@ -1,5 +1,5 @@
 #define MyAppName "NextDNS Manager"
-#define MyAppVersion "2.3.2"
+#define MyAppVersion "2.3.3"
 #define MyAppPublisher "Agustín Bracamonte"
 #define MyAppExeName "NextDNSModernWPF.exe"
 
@@ -37,7 +37,7 @@ OutputBaseFilename=NextDNS-Manager-{#MyAppVersion}-Setup-x64
 Compression=lzma2/ultra64
 SolidCompression=yes
 SetupLogging=yes
-VersionInfoVersion=2.3.2.0
+VersionInfoVersion=2.3.3.0
 VersionInfoCompany={#MyAppPublisher}
 VersionInfoDescription=NextDNS Manager Installer
 VersionInfoProductName={#MyAppName}
