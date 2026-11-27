@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using NextDNSManager.Shared;
 using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
@@ -156,6 +157,7 @@ internal sealed class DnsConfiguration
         }
         catch (Exception enableError)
         {
+            BrokerOperationDiagnostics.MarkFailureIfMissing(enableError, ActivationFailureStage.DnsApply);
             // A caller cancellation must not prevent a best-effort rollback.
             using var rollbackTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
             List<string> rollbackErrors;
@@ -168,9 +170,13 @@ internal sealed class DnsConfiguration
                 rollbackErrors = [$"la restauración de emergencia también falló: {rollbackError.Message}"];
             }
             if (rollbackErrors.Count > 0)
-                throw new InvalidOperationException(
+            {
+                var restoreFailure = new InvalidOperationException(
                     $"No se pudo completar la activación DNS. Se intentó restaurar la configuración original; queda guardada para reintentar. {string.Join("; ", rollbackErrors)}",
                     enableError);
+                BrokerOperationDiagnostics.MarkFailureAsPrimary(restoreFailure, ActivationFailureStage.DnsRestore);
+                throw restoreFailure;
+            }
             throw;
         }
     }

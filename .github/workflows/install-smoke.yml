@@ -40,46 +40,50 @@ jobs:
         id: install
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
           $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "El instalador terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
           $service = Get-Service NextDNSManagerBroker -ErrorAction Stop
           if ($service.Status -ne 'Running') { throw "Servicio en estado $($service.Status)." }
-          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.1.0') { throw 'Versión instalada incorrecta.' }
+          if ((Get-Item (Join-Path $installDir 'NextDNSModernWPF.exe')).VersionInfo.FileVersion -ne '2.3.2.0') { throw 'Versión instalada incorrecta.' }
       - name: Consultar estado mediante cliente normal
         id: status
-        continue-on-error: true
         shell: pwsh
         run: |
           dotnet build tests/BrokerProbe/BrokerProbe.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'No se pudo compilar BrokerProbe.' }
-          dotnet run --project tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release -- tests/BrokerProbe/bin/Release/net10.0-windows/BrokerProbe.exe
-          if ($LASTEXITCODE -ne 0) { throw 'El cliente no pudo consultar el servicio instalado.' }
+          $launcherOutput = & dotnet run --project tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release -- tests/BrokerProbe/bin/Release/net10.0-windows/BrokerProbe.exe 2>&1
+          $launcherExitCode = $LASTEXITCODE
+          $launcherOutput | Write-Output
+          if ($launcherExitCode -eq -1073741502 -or ($launcherOutput -join "`n") -match '(?i)(0xC0000142|3221225794|-1073741502)') {
+            throw 'RestrictedLauncher terminó con STATUS_DLL_INIT_FAILED (0xC0000142); la consulta con token restringido no llegó a ejecutarse y queda fallida.'
+          }
+          if ($launcherExitCode -ne 0) { throw "El cliente no pudo consultar el servicio instalado (exit code $launcherExitCode)." }
       - name: Reparar y volver a verificar
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "La reparación terminó con código $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
           if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar.' }
       - name: Rechazar instalación con instancia abierta
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
           $mutex = [System.Threading.Mutex]::new($false, 'NextDNSManagerWPF-Running')
           try {
-            $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+            $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
             $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
             if ($process.ExitCode -eq 0) { throw 'El instalador no rechazó la instancia abierta.' }
             & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
             if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio se detuvo durante el intento rechazado.' }
           } finally { $mutex.Dispose() }
       - name: Detectar archivo alterado y recuperarlo mediante reparación
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
           $installDir = Join-Path $env:ProgramFiles 'NextDNS Manager'
@@ -88,16 +92,16 @@ jobs:
           $detected = $false
           try { & ./scripts/Test-InstallLayout.ps1 -Directory $installDir } catch { $detected = $true }
           if (-not $detected) { throw 'La verificación no detectó el archivo alterado.' }
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
           $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "No se pudo reparar el archivo alterado: $($process.ExitCode)." }
           & ./scripts/Test-InstallLayout.ps1 -Directory $installDir
           if ((Get-Service NextDNSManagerBroker -ErrorAction Stop).Status -ne 'Running') { throw 'El servicio no quedó activo después de reparar el archivo.' }
       - name: Reinstalar con cada idioma del asistente
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && matrix.os == 'windows-2022' }}
+        if: ${{ always() && !cancelled() && steps.install.outcome == 'success' && matrix.os == 'windows-2022' }}
         shell: pwsh
         run: |
-          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.1-Setup-x64.exe'
+          $setup = Join-Path $env:GITHUB_WORKSPACE 'artifacts\NextDNS-Manager-2.3.2-Setup-x64.exe'
           foreach ($language in @('en', 'es', 'fr', 'pt', 'de')) {
             $process = Start-Process $setup -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/LANG=$language" -Wait -PassThru
             if ($process.ExitCode -ne 0) { throw "La reparación con idioma $language terminó con código $($process.ExitCode)." }
@@ -105,14 +109,10 @@ jobs:
           }
           & ./scripts/Test-InstallLayout.ps1 -Directory (Join-Path $env:ProgramFiles 'NextDNS Manager')
       - name: Desinstalar y comprobar limpieza
-        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        if: ${{ always() && !cancelled() && steps.install.outcome == 'success' }}
         shell: pwsh
         run: |
           $uninstaller = Join-Path $env:ProgramFiles 'NextDNS Manager\unins000.exe'
           $process = Start-Process $uninstaller -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "La desinstalación terminó con código $($process.ExitCode)." }
           if (Get-Service NextDNSManagerBroker -ErrorAction SilentlyContinue) { throw 'El servicio continúa registrado.' }
-      - name: Informar si faltó comprobar el cliente sin elevar
-        if: ${{ !cancelled() && steps.status.outcome == 'failure' }}
-        shell: pwsh
-        run: throw 'No se pudo comprobar la consulta del cliente sin elevar; revisa el paso de estado.'

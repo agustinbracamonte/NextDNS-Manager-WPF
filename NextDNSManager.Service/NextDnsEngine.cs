@@ -19,50 +19,62 @@ internal sealed class NextDnsEngine
 
     internal async Task<BrokerResponse> ExecuteAsync(BrokerRequest request)
     {
-        ValidateRequest(request);
-        using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-        await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
-        bool completed = false;
+        using IDisposable activationDiagnostics = BrokerOperationDiagnostics.BeginActivation(
+            request.Operation == "activate");
         try
         {
-            if (request.Operation != "status" && HasProfileSwitchJournal())
-                await RecoverPendingProfileSwitchAsync(deadline.Token).ConfigureAwait(false);
-
-            if (request.Operation == "activate")
+            BrokerOperationDiagnostics.RunSync(
+                ActivationFailureStage.RequestValidation,
+                () => ValidateRequest(request));
+            using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            await _operations.WaitAsync(deadline.Token).ConfigureAwait(false);
+            bool completed = false;
+            try
             {
-                // An explicit activation cancels any pending timed resume first.
-                await TemporaryPauseTransaction.ActivateAsync(
-                    () => PersistPauseUntilAsync(null),
-                    () => EnableAsync(request, deadline.Token)).ConfigureAwait(false);
-            }
-            else if (request.Operation == "deactivate")
-            {
-                // Persist the explicit off intent before removing a pause marker.
-                // Restore network configuration even if the resolver crashed.
-                // Disabling DNS never runs the CLI's reset-to-DHCP command.
-                await TemporaryPauseTransaction.DeactivateAsync(
-                    PersistDisabledAsync,
-                    () => PersistPauseUntilAsync(null),
-                    () => _dns.DisableAsync(deadline.Token)).ConfigureAwait(false);
-            }
-            else if (request.Operation == "pause")
-                await PauseAsync(request.PauseMinutes!.Value, deadline.Token).ConfigureAwait(false);
-            else if (request.Operation == "resume")
-                await ResumeAsync(deadline.Token, requireExpired: false).ConfigureAwait(false);
-            else if (request.Operation == "status" &&
-                     ReadSetting("Enabled") == "true" &&
-                     ReadPauseUntilUtc() is { } pauseUntil && pauseUntil <= DateTimeOffset.UtcNow)
-                await ResumeAsync(deadline.Token, requireExpired: true).ConfigureAwait(false);
+                if (request.Operation != "status" && HasProfileSwitchJournal())
+                    await RecoverPendingProfileSwitchAsync(deadline.Token).ConfigureAwait(false);
 
-            BrokerResponse response = Status();
-            completed = true;
-            return response;
+                if (request.Operation == "activate")
+                {
+                    // An explicit activation cancels any pending timed resume first.
+                    await TemporaryPauseTransaction.ActivateAsync(
+                        () => PersistPauseUntilAsync(null),
+                        () => EnableAsync(request, deadline.Token)).ConfigureAwait(false);
+                }
+                else if (request.Operation == "deactivate")
+                {
+                    // Persist the explicit off intent before removing a pause marker.
+                    // Restore network configuration even if the resolver crashed.
+                    // Disabling DNS never runs the CLI's reset-to-DHCP command.
+                    await TemporaryPauseTransaction.DeactivateAsync(
+                        PersistDisabledAsync,
+                        () => PersistPauseUntilAsync(null),
+                        () => _dns.DisableAsync(deadline.Token)).ConfigureAwait(false);
+                }
+                else if (request.Operation == "pause")
+                    await PauseAsync(request.PauseMinutes!.Value, deadline.Token).ConfigureAwait(false);
+                else if (request.Operation == "resume")
+                    await ResumeAsync(deadline.Token, requireExpired: false).ConfigureAwait(false);
+                else if (request.Operation == "status" &&
+                         ReadSetting("Enabled") == "true" &&
+                         ReadPauseUntilUtc() is { } pauseUntil && pauseUntil <= DateTimeOffset.UtcNow)
+                    await ResumeAsync(deadline.Token, requireExpired: true).ConfigureAwait(false);
+
+                BrokerResponse response = Status();
+                completed = true;
+                return response;
+            }
+            finally
+            {
+                _operations.Release();
+                if (!completed) NotifyReconciliationRequested();
+                NotifyPauseScheduleChanged();
+            }
         }
-        finally
+        catch (Exception error) when (request.Operation == "activate" && error is not OutOfMemoryException)
         {
-            _operations.Release();
-            if (!completed) NotifyReconciliationRequested();
-            NotifyPauseScheduleChanged();
+            BrokerOperationDiagnostics.MarkFailureIfMissing(error, ActivationFailureStage.EngineServiceValidation);
+            throw;
         }
     }
 
@@ -173,17 +185,28 @@ internal sealed class NextDnsEngine
 
     private async Task EnableAsync(BrokerRequest request, CancellationToken token)
     {
-        if (ServiceExists("NextDNSService"))
+        if (BrokerOperationDiagnostics.RunSync(
+                ActivationFailureStage.EngineServiceValidation,
+                () => ServiceExists("NextDNSService")))
             throw new InvalidOperationException("El cliente oficial de NextDNS sigue instalado. Retíralo desde Windows antes de activar este administrador.");
-        bool exists = ServiceExists("nextdns");
-        if (exists) ValidateOwnedCli();
+        bool exists = BrokerOperationDiagnostics.RunSync(
+            ActivationFailureStage.EngineServiceValidation,
+            () => ServiceExists("nextdns"));
+        if (exists)
+            BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, ValidateOwnedCli);
 
         string profile = request.ProfileId!.ToLowerInvariant();
         string signature = $"{profile}:{request.ReportClientInfo}:{request.SetupRouter}";
-        string? previousConfiguration = ReadSetting("Configuration");
+        string? previousConfiguration = BrokerOperationDiagnostics.RunSync(
+            ActivationFailureStage.EngineServiceValidation,
+            () => ReadSetting("Configuration"));
         bool changed = previousConfiguration != signature;
-        bool cliWasRunning = exists && IsCliRunning();
-        bool wasActive = cliWasRunning && _dns.IsActive;
+        bool cliWasRunning = exists && BrokerOperationDiagnostics.RunSync(
+            ActivationFailureStage.EngineServiceValidation,
+            IsCliRunning);
+        bool wasActive = cliWasRunning && BrokerOperationDiagnostics.RunSync(
+            ActivationFailureStage.EngineServiceValidation,
+            () => _dns.IsActive);
         if (exists && !changed && wasActive)
         {
             SetWanted(true);
@@ -204,7 +227,15 @@ internal sealed class NextDnsEngine
                 previousReport,
                 previousRouter,
                 ProfileSwitchJournal.Create(previousConfiguration!, signature));
-            await ProfileSwitchTransaction.ExecuteAsync(actions, token).ConfigureAwait(false);
+            try
+            {
+                await ProfileSwitchTransaction.ExecuteAsync(actions, token).ConfigureAwait(false);
+            }
+            catch (ProfileSwitchTransactionException error) when (!error.PreviousProfileRestored)
+            {
+                BrokerOperationDiagnostics.MarkFailureAsPrimary(error, ActivationFailureStage.DnsRestore);
+                throw;
+            }
             return;
         }
 
@@ -220,8 +251,15 @@ internal sealed class NextDnsEngine
     {
         string profile = request.ProfileId!.ToLowerInvariant();
         bool wantedBefore = ReadSetting("Enabled") == "true";
-        if (_dns.HasSnapshot && (changed || !IsCliRunning()))
-            await _dns.DisableAsync(token).ConfigureAwait(false);
+        bool hasSnapshot = BrokerOperationDiagnostics.RunSync(
+            ActivationFailureStage.DnsRestore,
+            () => _dns.HasSnapshot);
+        if (hasSnapshot && (changed || !BrokerOperationDiagnostics.RunSync(
+                ActivationFailureStage.EngineServiceValidation,
+                IsCliRunning)))
+            await BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsRestore,
+                () => _dns.DisableAsync(token)).ConfigureAwait(false);
 
         string[] options = BuildCliOptions(profile, request.ReportClientInfo, request.SetupRouter);
         if (!exists)
@@ -230,32 +268,56 @@ internal sealed class NextDnsEngine
             // install can be repaired, but an existing foreign service is never
             // adopted or stopped just because its name happens to match.
             BrokerPolicy.OwnsCli = true;
-            await RunCliAsync(new[] { "install" }.Concat(options), token).ConfigureAwait(false);
-            ValidateOwnedCli();
+            await BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliInstall,
+                () => RunCliAsync(new[] { "install" }.Concat(options), token)).ConfigureAwait(false);
+            BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, ValidateOwnedCli);
         }
         else if (changed)
         {
-            await RunCliAsync(new[] { "config", "set" }.Concat(options), token).ConfigureAwait(false);
-            if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, token).ConfigureAwait(false);
-            else await EnsureCliRunningAsync(token).ConfigureAwait(false);
+            await BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliConfigure,
+                () => RunCliAsync(new[] { "config", "set" }.Concat(options), token)).ConfigureAwait(false);
+            if (BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, IsCliRunning))
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.CliStart,
+                    () => RunCliAsync(new[] { "restart" }, token)).ConfigureAwait(false);
+            else
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.CliStart,
+                    () => EnsureCliRunningAsync(token)).ConfigureAwait(false);
         }
-        else if (!IsCliRunning()) await EnsureCliRunningAsync(token).ConfigureAwait(false);
+        else if (!BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, IsCliRunning))
+            await BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliStart,
+                () => EnsureCliRunningAsync(token)).ConfigureAwait(false);
 
-        await WaitForCliRunningAsync(token).ConfigureAwait(false);
-        ValidateOwnedCli();
-        await VerifyResolverAsync(token).ConfigureAwait(false);
+        await BrokerOperationDiagnostics.RunAsync(
+            ActivationFailureStage.CliStart,
+            () => WaitForCliRunningAsync(token)).ConfigureAwait(false);
+        BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, ValidateOwnedCli);
+        await BrokerOperationDiagnostics.RunAsync(
+            ActivationFailureStage.LocalDnsQuery,
+            () => VerifyResolverAsync(token)).ConfigureAwait(false);
         BrokerPolicy.SavedProfile = profile;
         WriteSetting("Configuration", signature);
         SetWanted(true);
         try
         {
-            await _dns.EnableAsync(token).ConfigureAwait(false);
+            await BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsApply,
+                () => _dns.EnableAsync(token)).ConfigureAwait(false);
             SetWanted(true);
         }
         catch
         {
             using var restoreDeadline = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-            try { await _dns.DisableAsync(restoreDeadline.Token).ConfigureAwait(false); }
+            try
+            {
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.DnsRestore,
+                    () => _dns.DisableAsync(restoreDeadline.Token)).ConfigureAwait(false);
+            }
             finally { SetWanted(wantedBefore); }
             throw;
         }
@@ -354,104 +416,161 @@ internal sealed class NextDnsEngine
 
         public Task BeginAsync(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            WriteProfileSwitchJournal(_journal);
-            return Task.CompletedTask;
+            return BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    WriteProfileSwitchJournal(_journal);
+                    return Task.CompletedTask;
+                });
         }
 
         public Task DisableDnsAsync(CancellationToken cancellationToken) =>
-            _engine._dns.DisableAsync(cancellationToken);
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsRestore,
+                () => _engine._dns.DisableAsync(cancellationToken));
 
         public Task SetTargetConfigurationAsync(CancellationToken cancellationToken) =>
-            RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
-                _targetRequest.ProfileId!.ToLowerInvariant(),
-                _targetRequest.ReportClientInfo,
-                _targetRequest.SetupRouter)), cancellationToken);
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliConfigure,
+                () => RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
+                    _targetRequest.ProfileId!.ToLowerInvariant(),
+                    _targetRequest.ReportClientInfo,
+                    _targetRequest.SetupRouter)), cancellationToken));
 
-        public async Task RestartTargetServiceAsync(CancellationToken cancellationToken)
-        {
-            if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
-            else await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
-            await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task RestartTargetServiceAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliStart,
+                async () =>
+                {
+                    if (BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, IsCliRunning))
+                        await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
+                    else
+                        await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
+                    await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
+                });
 
-        public async Task VerifyTargetResolverAsync(CancellationToken cancellationToken)
-        {
-            ValidateOwnedCli();
-            await VerifyResolverAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task VerifyTargetResolverAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                async () =>
+                {
+                    ValidateOwnedCli();
+                    await BrokerOperationDiagnostics.RunAsync(
+                        ActivationFailureStage.LocalDnsQuery,
+                        () => VerifyResolverAsync(cancellationToken)).ConfigureAwait(false);
+                });
 
-        public async Task EnableTargetDnsAsync(CancellationToken cancellationToken)
-        {
-            BrokerPolicy.SavedProfile = _targetRequest.ProfileId!.ToLowerInvariant();
-            WriteSetting("Configuration", _targetSignature);
-            SetWanted(true);
-            await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
-            SetWanted(true);
-        }
+        public Task EnableTargetDnsAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsApply,
+                async () =>
+                {
+                    BrokerPolicy.SavedProfile = _targetRequest.ProfileId!.ToLowerInvariant();
+                    WriteSetting("Configuration", _targetSignature);
+                    SetWanted(true);
+                    await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
+                    SetWanted(true);
+                });
 
         public Task CommitAsync(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.CommittedPhase });
-            try { ClearProfileSwitchJournal(); }
-            catch (Exception error) when (error is not OutOfMemoryException)
-            {
-                ServiceLog.Write(DiagnosticEvent.ServiceProfileSwitchCleanupPending, error);
-            }
-            return Task.CompletedTask;
+            return BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.CommittedPhase });
+                    try { ClearProfileSwitchJournal(); }
+                    catch (Exception error) when (error is not OutOfMemoryException)
+                    {
+                        ServiceLog.Write(DiagnosticEvent.ServiceProfileSwitchCleanupPending, error);
+                    }
+                    return Task.CompletedTask;
+                });
         }
 
         public Task BeginRollbackAsync(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.RollingBackPhase });
-            return Task.CompletedTask;
+            return BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    WriteProfileSwitchJournal(_journal with { Phase = ProfileSwitchJournal.RollingBackPhase });
+                    return Task.CompletedTask;
+                });
         }
 
-        public async Task DisableDnsForRollbackAsync(CancellationToken cancellationToken)
-        {
-            SetWanted(false);
-            await _engine._dns.DisableAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task DisableDnsForRollbackAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsRestore,
+                async () =>
+                {
+                    SetWanted(false);
+                    await _engine._dns.DisableAsync(cancellationToken).ConfigureAwait(false);
+                });
 
-        public Task SetPreviousConfigurationAsync(CancellationToken cancellationToken)
-        {
-            ValidateOwnedCli();
-            return RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
-                _previousProfile, _previousReportClientInfo, _previousSetupRouter)), cancellationToken);
-        }
+        public Task SetPreviousConfigurationAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    ValidateOwnedCli();
+                    return BrokerOperationDiagnostics.RunAsync(
+                        ActivationFailureStage.CliConfigure,
+                        () => RunCliAsync(new[] { "config", "set" }.Concat(BuildCliOptions(
+                            _previousProfile, _previousReportClientInfo, _previousSetupRouter)), cancellationToken));
+                });
 
-        public async Task RestartPreviousServiceAsync(CancellationToken cancellationToken)
-        {
-            if (IsCliRunning()) await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
-            else await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
-            await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task RestartPreviousServiceAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.CliStart,
+                async () =>
+                {
+                    if (BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, IsCliRunning))
+                        await RunCliAsync(new[] { "restart" }, cancellationToken).ConfigureAwait(false);
+                    else
+                        await EnsureCliRunningAsync(cancellationToken).ConfigureAwait(false);
+                    await WaitForCliRunningAsync(cancellationToken).ConfigureAwait(false);
+                });
 
-        public async Task VerifyPreviousResolverAsync(CancellationToken cancellationToken)
-        {
-            ValidateOwnedCli();
-            await VerifyResolverAsync(cancellationToken).ConfigureAwait(false);
-        }
+        public Task VerifyPreviousResolverAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    ValidateOwnedCli();
+                    return BrokerOperationDiagnostics.RunAsync(
+                        ActivationFailureStage.LocalDnsQuery,
+                        () => VerifyResolverAsync(cancellationToken));
+                });
 
-        public async Task EnablePreviousDnsAsync(CancellationToken cancellationToken)
-        {
-            BrokerPolicy.SavedProfile = _previousProfile;
-            WriteSetting("Configuration", _previousSignature);
-            SetWanted(true);
-            await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
-            SetWanted(true);
-            if (!IsCliRunning() || !_engine._dns.IsActive)
-                throw new InvalidOperationException("Windows no confirmó la restauración DNS del perfil anterior.");
-        }
+        public Task EnablePreviousDnsAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.DnsRestore,
+                async () =>
+                {
+                    BrokerPolicy.SavedProfile = _previousProfile;
+                    WriteSetting("Configuration", _previousSignature);
+                    SetWanted(true);
+                    await _engine._dns.EnableAsync(cancellationToken).ConfigureAwait(false);
+                    SetWanted(true);
+                    if (!BrokerOperationDiagnostics.RunSync(ActivationFailureStage.EngineServiceValidation, IsCliRunning) ||
+                        !_engine._dns.IsActive)
+                        throw new InvalidOperationException("Windows no confirmó la restauración DNS del perfil anterior.");
+                });
 
-        public Task CompleteRollbackAsync(CancellationToken cancellationToken)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            ClearProfileSwitchJournal();
-            return Task.CompletedTask;
-        }
+        public Task CompleteRollbackAsync(CancellationToken cancellationToken) =>
+            BrokerOperationDiagnostics.RunAsync(
+                ActivationFailureStage.EngineServiceValidation,
+                () =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    ClearProfileSwitchJournal();
+                    return Task.CompletedTask;
+                });
 
         public void MarkRecoveryRequired() => MarkProfileSwitchRecoveryRequired(_journal);
     }
@@ -730,7 +849,12 @@ internal sealed class NextDnsEngine
         catch (InvalidOperationException journalError)
         {
             SetWanted(false);
-            try { await _dns.DisableAsync(token).ConfigureAwait(false); }
+            try
+            {
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.DnsRestore,
+                    () => _dns.DisableAsync(token)).ConfigureAwait(false);
+            }
             catch (Exception dnsError) when (dnsError is not OutOfMemoryException)
             {
                 throw new AggregateException(journalError, dnsError);

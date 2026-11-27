@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:NextDNSModernWPF"
         xmlns:primitives="clr-namespace:System.Windows.Controls.Primitives;assembly=PresentationFramework"
-        Title="NextDNS Manager 2.3.1" Language="{Binding WindowLanguage, Source={x:Static local:LocalizationManager.Instance}}" Height="560" Width="800" MinHeight="560" MinWidth="680"
+        Title="NextDNS Manager 2.3.2" Language="{Binding WindowLanguage, Source={x:Static local:LocalizationManager.Instance}}" Height="560" Width="800" MinHeight="560" MinWidth="680"
         WindowStartupLocation="Manual" Loaded="MainWindow_ApplyResponsiveSize"
         SourceInitialized="MainWindow_BackdropSourceInitialized"
         ResizeMode="CanResize"
@@ -1054,7 +1054,7 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="False">
                     <Path Data="M10,1 L18,4 L18,10 C18,15 14,19 10,22 C6,19 2,15 2,10 L2,4 Z" Width="22" Height="24" Stretch="Fill" Stroke="{DynamicResource NextBlue}" StrokeThickness="2" Margin="0,0,10,0"/>
-                    <TextBlock Text="NextDNS Manager 2.3.1" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
+                    <TextBlock Text="NextDNS Manager 2.3.2" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimary}" VerticalAlignment="Center"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" WindowChrome.IsHitTestVisibleInChrome="True">
                     <ComboBox x:Name="cmbTheme" Width="142" Height="32" VerticalAlignment="Center" FontSize="13" ToolTip="{Binding [Main.Ui.Theme.Tooltip], Source={x:Static local:LocalizationManager.Instance}}">

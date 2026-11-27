@@ -77,16 +77,19 @@ internal static class BrokerFailureCatalog
 
     internal static BrokerFailureCode ClassifyResponseError(string? responseError)
     {
-        if (string.IsNullOrWhiteSpace(responseError))
+        DecodedActivationFailure decoded = ActivationFailureEnvelope.Decode(responseError);
+        string? message = decoded.MessageWithoutPrefix;
+        if (string.IsNullOrWhiteSpace(message))
             return BrokerFailureCode.ResponseErrorMissing;
 
-        return TryClassifyKnownMessage(responseError, out BrokerFailureCode code)
+        return TryClassifyKnownMessage(message, out BrokerFailureCode code)
             ? code
             : BrokerFailureCode.BrokerReportedError;
     }
 
     internal static BrokerResponseException CreateResponseException(string? responseError, string displayMessage) =>
-        new(responseError, ClassifyResponseError(responseError), displayMessage);
+        new(responseError, ClassifyResponseError(responseError), displayMessage,
+            ActivationFailureEnvelope.Decode(responseError));
 
     /// <summary>Returns a fixed localization key for the failure code.</summary>
     internal static string GetLocalizationKey(BrokerFailureCode code) => code switch
@@ -158,14 +161,25 @@ internal static class BrokerFailureCatalog
 internal sealed class BrokerResponseException : Exception
 {
     internal BrokerResponseException(string? responseError, BrokerFailureCode failureCode, string displayMessage)
+        : this(responseError, failureCode, displayMessage, ActivationFailureEnvelope.Decode(responseError))
+    {
+    }
+
+    internal BrokerResponseException(
+        string? responseError,
+        BrokerFailureCode failureCode,
+        string displayMessage,
+        DecodedActivationFailure activationFailure)
         : base(displayMessage)
     {
         ResponseError = responseError;
         FailureCode = failureCode;
+        ActivationFailure = activationFailure;
     }
 
     // Response text can contain private details. Callers may inspect it in memory,
     // but diagnostic logging accepts only FailureCode.
     internal string? ResponseError { get; }
     internal BrokerFailureCode FailureCode { get; }
+    internal DecodedActivationFailure ActivationFailure { get; }
 }

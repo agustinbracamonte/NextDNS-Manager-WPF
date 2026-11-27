@@ -60,6 +60,8 @@ internal static class Program
         await TestTemporaryPauseAsync().ConfigureAwait(false);
         TestDiagnosticServiceRecord();
         TestBrokerFailureCodes();
+        TestBrokerStatusRetryPolicy();
+        await TestActivationFailureDiagnosticsAsync().ConfigureAwait(false);
         await TestProfileSwitchTransactionAsync().ConfigureAwait(false);
         TestProfileSwitchJournal();
         TestProfileSwitchSelection();
@@ -212,6 +214,28 @@ internal static class Program
             "service retry backoff caps without integer overflow.");
     }
 
+    private static void TestBrokerStatusRetryPolicy()
+    {
+        var policy = new BrokerStatusRetryPolicy();
+        int[] expectedDelays = [3, 6, 12, 24, 48, 60, 60, 60];
+        foreach (int expected in expectedDelays)
+            Check(policy.RecordRetry() == TimeSpan.FromSeconds(expected),
+                $"broker status retry delay advances to {expected} seconds and respects the cap.");
+
+        Check(policy.ConsecutiveRetries == expectedDelays.Length,
+            "broker status retry policy tracks consecutive retries.");
+        policy.Reset();
+        Check(policy.ConsecutiveRetries == 0 && policy.RecordRetry() == TimeSpan.FromSeconds(3),
+            "a normal confirmed status resets automatic retry backoff.");
+        Check(BrokerStatusRetryPolicy.ShouldRetry(statusUncertain: false, needsDnsRestore: true) &&
+              BrokerStatusRetryPolicy.ShouldRetry(statusUncertain: true, needsDnsRestore: false) &&
+              !BrokerStatusRetryPolicy.ShouldRetry(statusUncertain: false, needsDnsRestore: false),
+            "attention and uncertain statuses retry, while a normal confirmed status stops retrying.");
+        Check(BrokerStatusRetryPolicy.GetDelaySeconds(3, initialDelaySeconds: 7, maximumDelaySeconds: 10) == 10 &&
+              BrokerStatusRetryPolicy.GetDelaySeconds(int.MaxValue) == BrokerStatusRetryPolicy.MaximumDelaySeconds,
+            "broker status retry backoff accepts custom bounds and caps without integer overflow.");
+    }
+
     private static void TestDiagnosticServiceRecord()
     {
         const string sensitiveMarker = "profile-SECRET 192.0.2.15 example.invalid";
@@ -305,6 +329,105 @@ internal static class Program
                     $"{language} has a translated broker message for {BrokerFailureCatalog.GetDiagnosticId(code)}.");
             }
         }
+    }
+
+    private static async Task TestActivationFailureDiagnosticsAsync()
+    {
+        const string sensitiveMarker = "profile-SECRET 192.0.2.15 example.invalid";
+        var injectedInstallFailure = new InvalidOperationException(sensitiveMarker);
+        Exception? observed = null;
+
+        using (BrokerOperationDiagnostics.BeginActivation(enabled: true))
+        {
+            try
+            {
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.CliInstall,
+                    () => Task.FromException(injectedInstallFailure)).ConfigureAwait(false);
+            }
+            catch (Exception error)
+            {
+                observed = error;
+            }
+
+            string brokerError = BrokerOperationDiagnostics.FormatBrokerError(injectedInstallFailure);
+            DecodedActivationFailure decoded = ActivationFailureEnvelope.Decode(brokerError);
+            string serviceRecord = DiagnosticLog.CreateServiceRecord(
+                DiagnosticEvent.ServiceReconcileFailure,
+                injectedInstallFailure,
+                suppressed: 0);
+
+            Check(ReferenceEquals(observed, injectedInstallFailure),
+                "activation diagnostics rethrow the original injected exception without wrapping it.");
+            Check(decoded.HasEnvelope && decoded.MetadataIsKnown &&
+                  decoded.Stage == ActivationFailureStage.CliInstall &&
+                  decoded.Category == ActivationFailureCategory.InvalidOperation &&
+                  decoded.MessageWithoutPrefix == sensitiveMarker,
+                "the existing broker error text carries a known stage/category envelope before its original message.");
+            Check(!serviceRecord.Contains(sensitiveMarker, StringComparison.Ordinal) &&
+                  !serviceRecord.Contains("NDMERR", StringComparison.Ordinal),
+                "service logs omit both raw exception text and the response-only activation token.");
+
+            var injectedTimeout = new OperationCanceledException("cancel-marker");
+            try
+            {
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.DnsRestore,
+                    () => Task.FromException(injectedTimeout)).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException error)
+            {
+                Check(ReferenceEquals(error, injectedTimeout),
+                    "activation diagnostics preserve the original cancellation exception.");
+            }
+
+            DecodedActivationFailure timeout = ActivationFailureEnvelope.Decode(
+                BrokerOperationDiagnostics.FormatBrokerError(injectedTimeout));
+            Check(timeout.MetadataIsKnown && timeout.Stage == ActivationFailureStage.DnsRestore &&
+                  timeout.Category == ActivationFailureCategory.TimeoutOrCancelled &&
+                  timeout.MessageWithoutPrefix == "La operación tardó demasiado. Consulta el estado antes de reintentar.",
+                "a restoration timeout receives a fixed safe code and preserves the established timeout message.");
+
+            var injectedApplyFailure = new IOException("apply-marker");
+            var injectedRestoreFailure = new InvalidOperationException("restore-marker");
+            Action failApply = () => throw injectedApplyFailure;
+            Action failRestore = () => throw injectedRestoreFailure;
+            try { BrokerOperationDiagnostics.RunSync(ActivationFailureStage.DnsApply, failApply); }
+            catch (IOException) { }
+            try { BrokerOperationDiagnostics.RunSync(ActivationFailureStage.DnsRestore, failRestore); }
+            catch (InvalidOperationException) { }
+
+            DecodedActivationFailure rollbackFailure = ActivationFailureEnvelope.Decode(
+                BrokerOperationDiagnostics.FormatBrokerError(new AggregateException(injectedApplyFailure, injectedRestoreFailure)));
+            Check(rollbackFailure.MetadataIsKnown && rollbackFailure.Stage == ActivationFailureStage.DnsRestore &&
+                  rollbackFailure.Category == ActivationFailureCategory.InvalidOperation,
+                "when both apply and restore fail, the token reports the restoration failure stage.");
+
+            var injectedLongFailure = new IOException(new string('x', 5000));
+            Action failLongQuery = () => throw injectedLongFailure;
+            try { BrokerOperationDiagnostics.RunSync(ActivationFailureStage.LocalDnsQuery, failLongQuery); }
+            catch (IOException) { }
+            string truncatedError = BrokerOperationDiagnostics.FormatBrokerError(injectedLongFailure);
+            DecodedActivationFailure truncated = ActivationFailureEnvelope.Decode(truncatedError);
+            Check(truncatedError.Length <= 1600 && truncated.MetadataIsKnown &&
+                  truncated.Stage == ActivationFailureStage.LocalDnsQuery,
+                "bounded broker error formatting keeps the diagnostic envelope when truncating long messages.");
+        }
+
+        var nonActivationFailure = new InvalidOperationException("legacy-message");
+        using (BrokerOperationDiagnostics.BeginActivation(enabled: false))
+        {
+            try
+            {
+                await BrokerOperationDiagnostics.RunAsync(
+                    ActivationFailureStage.CliStart,
+                    () => Task.FromException(nonActivationFailure)).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException) { }
+        }
+
+        Check(BrokerOperationDiagnostics.FormatBrokerError(nonActivationFailure) == "legacy-message",
+            "status and pause failures retain their legacy response text without an activation token.");
     }
 
     private static async Task TestProfileSwitchTransactionAsync()

@@ -47,6 +47,7 @@ namespace NextDNSModernWPF
         private Profile pendingProfileSelection;
         private Profile switchingToProfile;
         private readonly BrokerClient brokerClient = new BrokerClient();
+        private readonly BrokerStatusRetryPolicy brokerStatusRetryPolicy = new BrokerStatusRetryPolicy();
         private readonly UpdateChecker updateChecker = new UpdateChecker();
         private readonly UpdateInstaller updateInstaller = new UpdateInstaller();
         private CancellationTokenSource updateDownloadCancellation;
@@ -95,7 +96,10 @@ namespace NextDNSModernWPF
             lblInfo.SetResourceReference(TextBlock.ForegroundProperty, "TextSecondary");
             PreviewKeyDown += MainWindow_PreviewKeyDown;
             cmbProfiles.SelectionChanged += CmbProfiles_SelectionChanged;
-            brokerStatusRetryTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+            brokerStatusRetryTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(BrokerStatusRetryPolicy.InitialDelaySeconds)
+            };
             brokerStatusRetryTimer.Tick += BrokerStatusRetryTimer_Tick;
 
             try
@@ -584,9 +588,10 @@ namespace NextDNSModernWPF
             btnAction.IsEnabled = false;
             brokerActionInProgress = true;
             UpdateUI();
+            string operation = requestedOperation ?? (isProtected || needsDnsRestore ? "deactivate" : "activate");
+            Task<ActivationPreflightReport> preflightTask = null;
             try
             {
-                string operation = requestedOperation ?? (isProtected || needsDnsRestore ? "deactivate" : "activate");
                 Profile selectedProfile = cmbProfiles.SelectedItem as Profile;
                 string profileId = null;
 
@@ -631,16 +636,55 @@ namespace NextDNSModernWPF
             }
             catch (Exception ex)
             {
-                if (UiErrorLocalizer.TryGetBrokerFailureCode(ex, out BrokerFailureCode failureCode))
+                bool hasFailureCode = UiErrorLocalizer.TryGetBrokerFailureCode(ex, out BrokerFailureCode failureCode);
+                if (ex is BrokerResponseException brokerResponse &&
+                    brokerResponse.ActivationFailure.HasEnvelope && brokerResponse.ActivationFailure.MetadataIsKnown)
+                {
+                    DiagnosticLog.WriteManagerActivationFailure(
+                        DiagnosticEvent.BrokerActionFailure,
+                        brokerResponse.FailureCode,
+                        brokerResponse.ActivationFailure.Stage,
+                        brokerResponse.ActivationFailure.Category);
+                }
+                else if (hasFailureCode)
                     DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerActionFailure, failureCode);
                 else
                     DiagnosticLog.WriteManager(DiagnosticEvent.BrokerActionFailure, ex);
+
+                if (operation == "activate" && ex is BrokerResponseException responseFailure &&
+                    responseFailure.FailureCode == BrokerFailureCode.BrokerReportedError &&
+                    (!responseFailure.ActivationFailure.HasEnvelope ||
+                     (responseFailure.ActivationFailure.MetadataIsKnown &&
+                      responseFailure.ActivationFailure.Stage is not (
+                          ActivationFailureStage.RequestValidation or ActivationFailureStage.DnsRestore))))
+                    preflightTask = ActivationPreflightCollector.CaptureAsync();
+
                 brokerStatusError = UiErrorLocalizer.Localize(ex);
                 brokerStatusUncertain = true;
                 brokerActionInProgress = false;
                 await CheckCurrentStatusAsync();
                 if (!_trayDisposed)
-                    System.Windows.MessageBox.Show(UiErrorLocalizer.Localize(ex), LocalizationManager.Get("Code.Profile.OperationUnconfirmedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                {
+                    string displayMessage = UiErrorLocalizer.Localize(ex);
+                    ActivationPreflightCaptureResult captureResult = preflightTask is null
+                        ? null
+                        : await ActivationPreflightCapturePolicy.AwaitReportAsync(
+                            preflightTask,
+                            TimeSpan.FromSeconds(5));
+                    if (captureResult?.Report is { } report)
+                    {
+                        string summary = ActivationPreflightFormatter.Format(report);
+                        if (!string.IsNullOrWhiteSpace(summary))
+                            displayMessage += Environment.NewLine + Environment.NewLine + summary;
+                    }
+                    else if (captureResult?.TimedOut == true)
+                    {
+                        displayMessage += Environment.NewLine + Environment.NewLine +
+                            ActivationPreflightFormatter.FormatCaptureTimeout();
+                    }
+
+                    System.Windows.MessageBox.Show(displayMessage, LocalizationManager.Get("Code.Profile.OperationUnconfirmedTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
             }
             finally
             {
@@ -783,7 +827,8 @@ namespace NextDNSModernWPF
 
         private async void BrokerStatusRetryTimer_Tick(object sender, EventArgs e)
         {
-            if (!brokerStatusUncertain || brokerActionInProgress || profileSwitchInProgress) return;
+            if (!BrokerStatusRetryPolicy.ShouldRetry(brokerStatusUncertain, needsDnsRestore) ||
+                brokerActionInProgress || profileSwitchInProgress) return;
             await CheckCurrentStatusAsync();
         }
 
@@ -804,14 +849,14 @@ namespace NextDNSModernWPF
                 {
                     ApplyBrokerStatus(response);
                     brokerStatusUncertain = false;
-                    brokerStatusRetryTimer?.Stop();
                 }
                 else
                 {
                     BrokerFailureCode failureCode = BrokerFailureCatalog.ClassifyResponseError(response.Error);
                     DiagnosticLog.WriteManagerBrokerFailure(DiagnosticEvent.BrokerStatusCheckFailure, failureCode);
+                    DecodedActivationFailure decoded = ActivationFailureEnvelope.Decode(response.Error);
                     brokerStatusError = failureCode == BrokerFailureCode.BrokerReportedError
-                        ? UiErrorLocalizer.Localize(response.Error!)
+                        ? UiErrorLocalizer.Localize(decoded.MessageWithoutPrefix!)
                         : LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(failureCode));
                     brokerStatusUncertain = true;
                 }
@@ -829,7 +874,7 @@ namespace NextDNSModernWPF
             }
             finally { statusCheckInProgress = false; }
             if (brokerStatusUncertain)
-                brokerStatusRetryTimer?.Start();
+                ScheduleBrokerStatusRetry();
             UpdateUI();
             if (enableActionWhenComplete)
                 btnAction.IsEnabled = !brokerStatusUncertain;
@@ -853,6 +898,31 @@ namespace NextDNSModernWPF
                 SelectProfileById(activeProfileId);
             RefreshNetworkInformation();
             UpdateUI();
+            UpdateBrokerStatusRetrySchedule();
+        }
+
+        private void UpdateBrokerStatusRetrySchedule()
+        {
+            if (BrokerStatusRetryPolicy.ShouldRetry(brokerStatusUncertain, needsDnsRestore))
+            {
+                ScheduleBrokerStatusRetry();
+                return;
+            }
+
+            brokerStatusRetryPolicy.Reset();
+            brokerStatusRetryTimer?.Stop();
+            if (brokerStatusRetryTimer != null)
+                brokerStatusRetryTimer.Interval = TimeSpan.FromSeconds(BrokerStatusRetryPolicy.InitialDelaySeconds);
+        }
+
+        private void ScheduleBrokerStatusRetry()
+        {
+            brokerStatusRetryTimer?.Stop();
+            if (brokerStatusRetryTimer != null)
+            {
+                brokerStatusRetryTimer.Interval = brokerStatusRetryPolicy.RecordRetry();
+                brokerStatusRetryTimer.Start();
+            }
         }
 
         private void UpdateUI()
@@ -874,8 +944,8 @@ namespace NextDNSModernWPF
                     ? string.Empty
                     : LocalizationManager.T("Code.Home.PreviousProfile", GetProfileDisplayName(activeProfileId));
                 lblInfo.Text = LocalizationManager.Get("Code.Home.RecoveryNeeded") + priorProfile;
-                btnAction.Content = LocalizationManager.Get("Code.Home.RestoreDns");
-                SetActionButtonTheme("NextBlue", "ActionButtonForeground");
+                btnAction.Content = LocalizationManager.Get("Code.Home.Deactivate");
+                SetActionButtonTheme("ActionButtonDestructiveBackground", "ActionButtonDestructiveForeground");
                 return;
             }
             if (!hasBrokerStatus)

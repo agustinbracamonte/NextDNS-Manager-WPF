@@ -26,7 +26,7 @@ jobs:
         shell: pwsh
         run: |
           ./scripts/Prepare-NextDNSCli.ps1
-          foreach ($probe in @('BrokerProbe', 'NextDnsApiProbe', 'UpdateProbe')) {
+          foreach ($probe in @('BrokerProbe', 'ActivationPreflightProbe', 'NextDnsApiProbe', 'UpdateProbe')) {
             dotnet run --project "tests/$probe/$probe.csproj" -c Release
             if ($LASTEXITCODE -ne 0) { throw "Falló $probe." }
           }

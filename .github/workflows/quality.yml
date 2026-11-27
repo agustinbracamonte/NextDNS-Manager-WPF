@@ -28,6 +28,11 @@ jobs:
         run: |
           dotnet run --project tests/BrokerProbe/BrokerProbe.csproj -c Release
           if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas aisladas del servicio.' }
+      - name: Comprobar diagnóstico de activación sin modificar DNS
+        shell: pwsh
+        run: |
+          dotnet run --project tests/ActivationPreflightProbe/ActivationPreflightProbe.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas del diagnóstico de activación.' }
       - name: Comprobar API con transporte simulado
         shell: pwsh
         run: |

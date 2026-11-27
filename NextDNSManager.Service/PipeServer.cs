@@ -94,12 +94,7 @@ internal sealed class PipeServer : IDisposable
         }
     }
 
-    private static string SafeMessage(Exception error)
-    {
-        if (error is OperationCanceledException) return "La operación tardó demasiado. Consulta el estado antes de reintentar.";
-        string text = error.Message;
-        return text.Length <= 1600 ? text : text[..1600];
-    }
+    private static string SafeMessage(Exception error) => BrokerOperationDiagnostics.FormatBrokerError(error);
 
     public void Dispose()
     {

@@ -96,12 +96,31 @@ internal static class UiErrorLocalizer
 
     internal static BrokerResponseException CreateBrokerResponseException(string? responseError)
     {
+        DecodedActivationFailure decoded = ActivationFailureEnvelope.Decode(responseError);
+        string? messageWithoutPrefix = decoded.MessageWithoutPrefix;
         BrokerFailureCode code = BrokerFailureCatalog.ClassifyResponseError(responseError);
-        string displayMessage = code == BrokerFailureCode.BrokerReportedError
-            ? Localize(responseError!)
-            : LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(code));
+        string displayMessage;
+        if (code == BrokerFailureCode.BrokerReportedError && decoded.HasEnvelope)
+        {
+            displayMessage = LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(code));
+            if (decoded.MetadataIsKnown && ActivationFailureSummaryFormatter.Format(
+                    decoded.Stage,
+                    decoded.Category,
+                    LocalizationManager.CurrentLanguage) is { } safeSummary)
+                displayMessage += Environment.NewLine + Environment.NewLine + safeSummary;
+        }
+        else if (code == BrokerFailureCode.BrokerReportedError)
+        {
+            // Legacy broker errors keep their existing localization behavior.
+            displayMessage = Localize(messageWithoutPrefix!);
+        }
+        else
+        {
+            // Known messages retain their stable, translated explanations.
+            displayMessage = LocalizationManager.Get(BrokerFailureCatalog.GetLocalizationKey(code));
+        }
 
-        return BrokerFailureCatalog.CreateResponseException(responseError, displayMessage);
+        return new BrokerResponseException(responseError, code, displayMessage, decoded);
     }
 
     internal static BrokerResponseException CreateActivationNotConfirmedException() =>

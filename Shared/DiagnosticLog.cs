@@ -84,12 +84,40 @@ internal static class DiagnosticLog
     internal static void WriteManagerBrokerFailure(DiagnosticEvent diagnosticEvent, BrokerFailureCode failureCode)
         => WriteManagerCore(diagnosticEvent, BrokerFailureCatalog.GetDiagnosticId(failureCode));
 
+    internal static void WriteManagerActivationFailure(
+        DiagnosticEvent diagnosticEvent,
+        BrokerFailureCode failureCode,
+        ActivationFailureStage stage,
+        ActivationFailureCategory category)
+    {
+        string diagnosticId = GetActivationFailureDiagnosticId(failureCode, stage, category);
+        WriteManagerCore(diagnosticEvent, diagnosticId);
+    }
+
     internal static string CreateManagerBrokerFailureRecord(
         DateTimeOffset now,
         DiagnosticEvent diagnosticEvent,
         BrokerFailureCode failureCode,
         int suppressed = 0) =>
         FormatManagerRecord(now, diagnosticEvent, BrokerFailureCatalog.GetDiagnosticId(failureCode), suppressed);
+
+    internal static string CreateManagerActivationFailureRecord(
+        DateTimeOffset now,
+        DiagnosticEvent diagnosticEvent,
+        BrokerFailureCode failureCode,
+        ActivationFailureStage stage,
+        ActivationFailureCategory category,
+        int suppressed = 0) =>
+        FormatManagerRecord(now, diagnosticEvent,
+            GetActivationFailureDiagnosticId(failureCode, stage, category), suppressed);
+
+    private static string GetActivationFailureDiagnosticId(
+        BrokerFailureCode failureCode,
+        ActivationFailureStage stage,
+        ActivationFailureCategory category) =>
+        BrokerFailureCatalog.GetDiagnosticId(failureCode) + "_ACTIVATE_" +
+        ActivationFailureEnvelope.GetStageId(stage) + "_" +
+        ActivationFailureEnvelope.GetCategoryId(category);
 
     private static void WriteManagerCore(DiagnosticEvent diagnosticEvent, string diagnosticCode)
     {
