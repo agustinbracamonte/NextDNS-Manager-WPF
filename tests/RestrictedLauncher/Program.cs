@@ -35,7 +35,7 @@ internal static class Program
 
         if (args.Length != 1)
         {
-            Console.Error.WriteLine("Usage: RestrictedLauncher <BrokerProbe.exe>");
+            Console.Error.WriteLine("Usage: RestrictedLauncher <BrokerProbe.exe|BrokerProbe.dll>");
             return 2;
         }
 
@@ -54,7 +54,8 @@ internal static class Program
     {
         string fullProbePath = Path.GetFullPath(probePath);
         if (!File.Exists(fullProbePath))
-            throw new FileNotFoundException("BrokerProbe.exe was not found.", fullProbePath);
+            throw new FileNotFoundException("The BrokerProbe executable or assembly was not found.", fullProbePath);
+        ProbeCommand probeCommand = ResolveProbeCommand(fullProbePath);
 
         using SafeTokenHandle currentToken = OpenCurrentProcessToken(TokenQuery | TokenDuplicate | TokenAssignPrimary);
         string expectedUserSid = GetTokenUserSid(currentToken);
@@ -79,7 +80,7 @@ internal static class Program
         {
             using SafeFileHandle logHandle = CreateInheritableFile(outputPath);
             using SafeFileHandle inputHandle = OpenInheritableNullInput();
-            ProcessInformation processInfo = StartProbe(fullProbePath, Directory.GetCurrentDirectory(), restrictedToken, inputHandle, logHandle);
+            ProcessInformation processInfo = StartProbe(probeCommand, Directory.GetCurrentDirectory(), restrictedToken, inputHandle, logHandle);
             bool childExited = false;
             try
             {
@@ -118,6 +119,7 @@ internal static class Program
         }
 
         Console.WriteLine("Identity check passed: same user SID and session; Administrators is disabled.");
+        Console.WriteLine($"Probe host: {probeCommand.ExecutablePath}");
         Console.Write(output);
 
         if (exitCode != 0)
@@ -155,6 +157,42 @@ internal static class Program
                 1, ref sidToDisable, 0, IntPtr.Zero, 0, IntPtr.Zero, out SafeTokenHandle restrictedToken))
             throw LastWin32Error("CreateRestrictedToken");
         return restrictedToken;
+    }
+
+    private static ProbeCommand ResolveProbeCommand(string probePath)
+    {
+        string assemblyPath = Path.GetExtension(probePath).Equals(".dll", StringComparison.OrdinalIgnoreCase)
+            ? probePath
+            : Path.ChangeExtension(probePath, ".dll");
+        if (!File.Exists(assemblyPath))
+            throw new FileNotFoundException("BrokerProbe.dll was not found next to its launcher.", assemblyPath);
+
+        return new ProbeCommand(FindDotNetExecutable(), assemblyPath, "--status");
+    }
+
+    private static string FindDotNetExecutable()
+    {
+        string[] roots =
+        [
+            Environment.GetEnvironmentVariable("DOTNET_ROOT_X64") ?? string.Empty,
+            Environment.GetEnvironmentVariable("DOTNET_ROOT") ?? string.Empty
+        ];
+
+        foreach (string root in roots)
+        {
+            if (string.IsNullOrWhiteSpace(root)) continue;
+            string candidate = Path.Combine(root, "dotnet.exe");
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
+                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string candidate = Path.Combine(directory.Trim('"'), "dotnet.exe");
+            if (File.Exists(candidate)) return candidate;
+        }
+
+        throw new FileNotFoundException("dotnet.exe could not be found through DOTNET_ROOT or PATH.");
     }
 
     private static void ValidateRestrictedToken(
@@ -249,7 +287,7 @@ internal static class Program
     }
 
     private static ProcessInformation StartProbe(
-        string probePath,
+        ProbeCommand probeCommand,
         string workingDirectory,
         SafeTokenHandle restrictedToken,
         SafeFileHandle inputHandle,
@@ -267,7 +305,7 @@ internal static class Program
                 StandardError = outputHandle.DangerousGetHandle()
             }
         };
-        var commandLine = new StringBuilder($"\"{probePath}\" --status");
+        var commandLine = new StringBuilder($"\"{probeCommand.ExecutablePath}\" \"{probeCommand.AssemblyPath}\" {probeCommand.Arguments}");
 
         IntPtr attributeListSize = IntPtr.Zero;
         _ = NativeMethods.InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeListSize);
@@ -290,7 +328,7 @@ internal static class Program
                 throw LastWin32Error("UpdateProcThreadAttribute(handle list)");
             startupInfo.AttributeList = attributeList;
 
-            if (!NativeMethods.CreateProcessAsUser(restrictedToken, probePath, commandLine,
+            if (!NativeMethods.CreateProcessAsUser(restrictedToken, probeCommand.ExecutablePath, commandLine,
                     IntPtr.Zero, IntPtr.Zero, true, CreateNoWindow | ExtendedStartupInfoPresent,
                     IntPtr.Zero, workingDirectory, ref startupInfo, out ProcessInformation processInfo))
                 throw LastWin32Error("CreateProcessAsUser");
@@ -341,6 +379,8 @@ internal static class Program
     private static bool HasOutputLine(string output, string expectedLine) =>
         output.Split(["\r\n", "\n"], StringSplitOptions.RemoveEmptyEntries)
             .Any(line => string.Equals(line.Trim(), expectedLine, StringComparison.Ordinal));
+
+    private sealed record ProbeCommand(string ExecutablePath, string AssemblyPath, string Arguments);
 
     private static Exception LastWin32Error(string operation) =>
         new Win32Exception(Marshal.GetLastWin32Error(), operation + " failed.");

@@ -11,6 +11,7 @@ internal static class UiErrorLocalizer
     private static readonly IReadOnlyDictionary<string, string> KnownMessageKeys =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
+            ["El cliente oficial de NextDNS sigue instalado. Retíralo desde Windows antes de activar este administrador."] = "Code.Error.Dns.OfficialClientInstalled",
             ["El broker de NextDNS no respondió en 60 segundos. Comprueba que el servicio esté iniciado o repáralo desde el instalador."] = "Code.Error.Broker.Timeout",
             ["La operación tardó demasiado. Consulta el estado antes de reintentar."] = "Code.Error.Broker.OperationTimeout",
             ["La operación tardó demasiado. Consulta el estado antes de volver a intentarlo."] = "Code.Error.Broker.OperationTimeout",

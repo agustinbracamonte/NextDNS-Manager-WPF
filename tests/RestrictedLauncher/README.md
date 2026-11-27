@@ -12,4 +12,4 @@ $dotnet = Join-Path $env:LOCALAPPDATA 'NextDNSManager\dotnet-sdk\dotnet.exe'
 & $dotnet run --project tests/RestrictedLauncher/RestrictedLauncher.csproj -c Release -- tests/BrokerProbe/bin/Release/net10.0-windows/BrokerProbe.exe
 ```
 
-`BrokerProbe --status` sends a read-only request to the installed broker. Do not run this launcher in local development unless a status query against the current user's installed service is intended; it is designed for the installer smoke workflow.
+`BrokerProbe --status` requests status from the installed broker. If a pause has expired or recovery is pending, the broker may reconcile protection and change DNS. Run this helper only on an isolated test machine where such changes are acceptable; it is designed for the installer smoke workflow.
