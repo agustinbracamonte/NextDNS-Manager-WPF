@@ -242,6 +242,7 @@ internal static class Program
             ("No se pudo verificar el proceso del broker. Repara la instalación desde el instalador.", BrokerFailureCode.PipeProcessIdUnavailable),
             ("No se pudo verificar el servicio del broker. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceManagerQueryFailed),
             ("No se encontró el servicio broker de NextDNS. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceNotFound),
+            ("El cliente oficial de NextDNS sigue instalado. Retíralo desde Windows antes de activar este administrador.", BrokerFailureCode.OfficialNextDnsServiceDetected),
             ("La conexión no pertenece al proceso en ejecución del servicio broker. Repara la instalación desde el instalador.", BrokerFailureCode.PipeServiceProcessMismatch),
             ("El broker no está configurado para ejecutarse como LocalSystem. Repara la instalación desde el instalador.", BrokerFailureCode.ServiceAccountUnexpected),
             ("La ruta configurada para el broker es inesperada. Repara la instalación desde el instalador.", BrokerFailureCode.ServicePathUnexpected),
